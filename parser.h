@@ -6,11 +6,6 @@
 
 typedef int NodeIdx;
 
-typedef struct FnArg {
-    Str name;
-    Str type;
-} FnArg;
-
 typedef enum ExprType {
     EXPR_LITERAL,
     EXPR_CALL
@@ -31,7 +26,7 @@ typedef struct Expr {
 
 typedef struct AstNode {
     enum AstType {
-        AST_MODULE, AST_FN, AST_EXPR
+        AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR
     } type;
 
     NodeIdx first_child;
@@ -40,9 +35,14 @@ typedef struct AstNode {
     union {
         struct {
             Str name;
-            Vec/*<FnArg>*/ args;
+            NodeIdx first_arg;
             Str ret;
         } fn;
+
+        struct {
+            Str name;
+            Str type;
+        } fn_arg;
 
         struct Expr expr;
     };

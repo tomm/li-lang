@@ -172,14 +172,18 @@ static NodeIdx parse_function(TokenCursor *toks) {
 
     chomp(toks, T_LPAREN);
 
-    Vec args = vec_init(sizeof(FnArg));
+    ChildCursor args = ChildCursor_init();
     {
         while (tok_peek(toks, 0, true).type == T_IDENT) {
-            FnArg arg;
-            arg.name = chomp(toks, T_IDENT).ident;
+            NodeIdx a = alloc_node();
+            AstNode *n = get_node(a);
+            n->type = AST_FN_ARG;
+            n->fn_arg.name = chomp(toks, T_IDENT).ident;
             chomp(toks, T_COLON);
-            arg.type = chomp(toks, T_IDENT).ident;
-            vec_push(&args, &arg);
+            n->fn_arg.type = chomp(toks, T_IDENT).ident;
+
+            ChildCursor_append(&args, a);
+
             if (!check(toks, T_COMMA)) break;
             chomp(toks, T_COMMA);
         }
@@ -213,7 +217,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
         .first_child = body.first_child,
         .fn = {
             .name = t.ident,
-            .args = args,
+            .first_arg = args.first_child,
             .ret = ret,
         }
     });
@@ -253,13 +257,14 @@ static void _indent(int depth) {
     for (int i=0; i<depth; ++i) { putchar(' '); }
 }
 
-static void print_fn_args(Vec *fn_args) {
-    for (int i=0; i<fn_args->len; ++i) {
-        FnArg a = *(FnArg*)vec_get(fn_args, i);
-        Str_puts(a.name, stdout);
+static void print_fn_args(NodeIdx first_arg) {
+    for (NodeIdx arg=first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
+        AstNode *n = get_node(arg);
+        assert(n->type == AST_FN_ARG);
+        Str_puts(n->fn_arg.name, stdout);
         fputs(":", stdout);
-        Str_puts(a.type, stdout);
-        if (i < fn_args->len-1) fputs(", ", stdout);
+        Str_puts(n->fn_arg.type, stdout);
+        fputs(", ", stdout);
     }
 }
 
@@ -279,7 +284,7 @@ void print_ast(NodeIdx nidx, int depth) {
             printf("fn ");
             Str_puts(node->fn.name, stdout);
             printf("(");
-            print_fn_args(&node->fn.args);
+            print_fn_args(node->fn.first_arg);
             printf(") -> ");
             Str_puts(node->fn.ret, stdout);
             printf("\n");
