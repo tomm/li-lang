@@ -11,4 +11,3 @@ fn test3(a: bool, b: bool,) -> u16
 }
 
 fn _hey_jude(x: u32) { 8*1+2*2*2*2+3+4}
-

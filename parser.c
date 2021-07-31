@@ -55,6 +55,23 @@ static void parse_error(const char *msg, enum TokType expected, Token *got) {
 static AstNode *get_node(NodeIdx idx) { return vec_get(&_node_alloc, idx); }
 static void set_node(NodeIdx idx, AstNode *n) { vec_set(&_node_alloc, idx, n); }
 
+/* child node linked list logic */
+typedef struct ChildCursor {
+    NodeIdx first_child;
+    NodeIdx last_child;
+} ChildCursor;
+static ChildCursor ChildCursor_init() { return (ChildCursor) { 0, 0 }; }
+static void ChildCursor_append(ChildCursor *cursor, NodeIdx child) {
+    if (child != 0) {
+        if (cursor->first_child == 0) {
+            cursor->first_child = child;
+        } else {
+            get_node(cursor->last_child)->next_sibling = child;
+        }
+        cursor->last_child = child;
+    }
+}
+
 static Token chomp(TokenCursor *toks, enum TokType type) {
     Token t = tok_next(toks, true);
     if (t.type != type) {
@@ -185,23 +202,19 @@ static NodeIdx parse_function(TokenCursor *toks) {
     }
 
     chomp(toks, T_LBRACE);
-
-    Vec body = vec_init(sizeof(NodeIdx));
-
+    ChildCursor body = ChildCursor_init();
     while (!check(toks, T_RBRACE)) {
-        const NodeIdx n = parse_expression(toks);
-        vec_push(&body, &n);
+        ChildCursor_append(&body, parse_expression(toks));
     }
-
     chomp(toks, T_RBRACE);
 
     set_node(mod, &(AstNode) {
         .type = AST_FN,
+        .first_child = body.first_child,
         .fn = {
             .name = t.ident,
             .args = args,
             .ret = ret,
-            .body = body,
         }
     });
 
@@ -210,29 +223,27 @@ static NodeIdx parse_function(TokenCursor *toks) {
 
 NodeIdx parse_module(TokenCursor *toks) {
     NodeIdx mod = alloc_node();
-    Vec children = vec_init(sizeof(NodeIdx));
+    ChildCursor children = ChildCursor_init();
 
     for (;;) {
         Token t = tok_next(toks, true);
+
         switch (t.type) {
-            case T_FN: {
-                const NodeIdx child = parse_function(toks);
-                vec_push(&children, &child);
+            case T_FN:
+                ChildCursor_append(&children, parse_function(toks));
                 break;
-            }
             case T_EOF:
                 goto done;
             default:
                 parse_error("Expected function or end of file", T_FN, &t);
         }
     }
+
 done:
 
     set_node(mod, &(AstNode) {
         .type = AST_MODULE,
-        .module = {
-            .nodes = children
-        }
+        .first_child = children.first_child
     });
 
     return mod;
@@ -259,8 +270,8 @@ void print_ast(NodeIdx nidx, int depth) {
         case AST_MODULE:
             _indent(depth);
             printf("module\n");
-            for (int i=0; i<node->module.nodes.len; ++i) {
-                print_ast(*(NodeIdx*)vec_get(&node->module.nodes, i), depth+1);
+            for (NodeIdx child=node->first_child; child != 0; child = get_node(child)->next_sibling) {
+                print_ast(child, depth+1);
             }
             break;
         case AST_FN:
@@ -272,8 +283,8 @@ void print_ast(NodeIdx nidx, int depth) {
             printf(") -> ");
             Str_puts(node->fn.ret, stdout);
             printf("\n");
-            for (int i=0; i<node->fn.body.len; ++i) {
-                print_ast(*(NodeIdx*)vec_get(&node->fn.body, i), depth+1);
+            for (NodeIdx child=node->first_child; child != 0; child = get_node(child)->next_sibling) {
+                print_ast(child, depth+1);
             }
             break;
         case AST_EXPR:

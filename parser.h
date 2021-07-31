@@ -34,16 +34,14 @@ typedef struct AstNode {
         AST_MODULE, AST_FN, AST_EXPR
     } type;
 
-    union {
-        struct {
-            Vec nodes;
-        } module;
+    NodeIdx first_child;
+    NodeIdx next_sibling; /* 0 is end */
 
+    union {
         struct {
             Str name;
             Vec/*<FnArg>*/ args;
             Str ret;
-            Vec/*<AstNode>*/ body;
         } fn;
 
         struct Expr expr;
