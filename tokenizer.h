@@ -1,0 +1,42 @@
+#ifndef __TOKEN_H
+#define __TOKEN_H
+
+#include "str.h"
+#include "vec.h"
+
+typedef struct Token {
+    enum TokType {
+        T_SPACE,
+        T_LBRACE,
+        T_RBRACE,
+        T_LPAREN,
+        T_RPAREN,
+        T_SEMICOLON,
+        T_COLON,
+        T_MINUS,
+        T_PLUS,
+        T_ASTERISK,
+        T_COMMA,
+        T_GT,
+        T_AS,
+        T_RETURN,
+        T_FN,
+        T_IDENT,
+        T_DECIMAL,
+        T_RARROW,
+        T_EOF
+    } type;
+
+    int line;
+    int col;
+
+    union {
+        Str ident;
+        Str decimal;
+    };
+} Token;
+
+extern const char *token_type_cstr(enum TokType type);
+extern Vec lex(Str buf);
+
+#endif /* __TOKEN_H */
