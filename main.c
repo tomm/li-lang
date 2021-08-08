@@ -8,6 +8,7 @@
 #include "str.h"
 #include "parser.h"
 #include "tokenizer.h"
+#include "output_lr35902.h"
 
 Str read_file(FILE *f) {
     fseek(f, 0, SEEK_END);
@@ -46,6 +47,8 @@ int main(int argc, char** argv) {
         dump_tokens(&token_vec);
         const NodeIdx root = parse_module(&(TokenCursor) { .tokens = token_vec, .next = 0 });
         print_ast(root, 0);
+
+        output_lr35902(root);
 
         vec_free(&token_vec);
 

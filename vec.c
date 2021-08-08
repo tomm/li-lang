@@ -64,6 +64,10 @@ void vec_pop(Vec *v, void *popped) {
     memcpy(popped, vec_get(v, v->len), v->elem_size);
 }
 
+void vec_zero(Vec *v) {
+    v->len = 0;
+}
+
 #ifdef TEST
 #include <stdio.h>
 

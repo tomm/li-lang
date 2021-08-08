@@ -52,7 +52,7 @@ static void parse_error(const char *msg, enum TokType expected, Token *got) {
     exit(-1);
 }
 
-static AstNode *get_node(NodeIdx idx) { return vec_get(&_node_alloc, idx); }
+AstNode *get_node(NodeIdx idx) { return vec_get(&_node_alloc, idx); }
 static void set_node(NodeIdx idx, AstNode *n) { vec_set(&_node_alloc, idx, n); }
 
 /* child node linked list logic */
@@ -85,41 +85,105 @@ static bool check(TokenCursor *toks, enum TokType type) {
     return t.type == type;
 }
 
-static NodeIdx parse_literal_expression(TokenCursor *toks) {
-    Token t = chomp(toks, T_DECIMAL);
-
+static NodeIdx parse_primary_expression(TokenCursor *toks) {
+    Token t = tok_next(toks, true);
     NodeIdx expr = alloc_node();
+
+    switch (t.type) {
+        case T_DECIMAL:
+            set_node(expr, &(AstNode) {
+                .type = AST_EXPR,
+                .expr = {
+                    .type = EXPR_LITERAL,
+                    .literal = t.decimal
+                }
+            });
+            break;
+        case T_IDENT:
+            set_node(expr, &(AstNode) {
+                .type = AST_EXPR,
+                .expr = {
+                    .type = EXPR_IDENT,
+                    .ident = t.ident
+                }
+            });
+            break;
+        default:
+            parse_error("Expected primary expression", 0, &t);
+    }
         
-    set_node(expr, &(AstNode) {
-        .type = AST_EXPR,
-        .expr = {
-            .type = EXPR_LITERAL,
-            .literal = t.decimal
-        }
-    });
     return expr;
 }
 
+static NodeIdx parse_expression(TokenCursor *toks);
+
+static NodeIdx parse_postfix_expression(TokenCursor *toks) {
+    NodeIdx n = parse_primary_expression(toks);
+
+    // function call
+    if (tok_peek(toks, 0, true).type == T_LPAREN) {
+        chomp(toks, T_LPAREN);
+
+        ChildCursor args = ChildCursor_init();
+        while (tok_peek(toks, 0, true).type != T_RPAREN) {
+            ChildCursor_append(&args, parse_expression(toks));
+            if (tok_peek(toks, 0, true).type != T_COMMA) {
+                break;
+            }
+            chomp(toks, T_COMMA);
+        }
+
+        chomp(toks, T_RPAREN);
+
+        NodeIdx call = alloc_node();
+        set_node(call, &(AstNode) {
+            .type = AST_EXPR,
+            .expr = {
+                .type = EXPR_CALL,
+                .call = {
+                    .callee = n,
+                    .first_arg = args.first_child,
+                }
+            }
+        });
+        return call;
+    }
+    else {
+        return n;
+    }
+}
+
+static NodeIdx make_ident_node(char *ident)
+{
+    NodeIdx n = alloc_node();
+    set_node(n, &(AstNode) {
+        .type = AST_EXPR,
+        .expr = {
+            .type = EXPR_IDENT,
+            .ident = { .s = ident, .len = strlen(ident) }
+        }
+    });
+    return n;
+}
+
 static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
-    NodeIdx n = parse_literal_expression(toks);
+    NodeIdx n = parse_postfix_expression(toks);
 
     while (tok_peek(toks, 0, true).type == T_ASTERISK) {
         chomp(toks, T_ASTERISK);
 
-        Vec/*<NodeIdx>*/ args = vec_init(sizeof(NodeIdx));
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, n);
+        ChildCursor_append(&args, parse_postfix_expression(toks));
 
-        vec_push(&args, &n);
-        n = parse_literal_expression(toks);
-        vec_push(&args, &n);
-        
         n = alloc_node();
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
             .expr = {
                 .type = EXPR_CALL,
                 .call = {
-                    .fn_name = { .s = "*", .len = 1 },
-                    .args = args,
+                    .callee = make_ident_node("*"),
+                    .first_arg = args.first_child,
                 }
             }
         });
@@ -134,11 +198,9 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
     while (tok_peek(toks, 0, true).type == T_PLUS) {
         chomp(toks, T_PLUS);
 
-        Vec/*<NodeIdx>*/ args = vec_init(sizeof(NodeIdx));
-
-        vec_push(&args, &n);
-        n = parse_multiplicative_expression(toks);
-        vec_push(&args, &n);
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, n);
+        ChildCursor_append(&args, parse_multiplicative_expression(toks));
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -146,8 +208,8 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
             .expr = {
                 .type = EXPR_CALL,
                 .call = {
-                    .fn_name = { .s = "+", .len = 1 },
-                    .args = args,
+                    .callee = make_ident_node("+"),
+                    .first_arg = args.first_child
                 }
             }
         });
@@ -158,6 +220,31 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
 
 static NodeIdx parse_expression(TokenCursor *toks) {
     return parse_additive_expression(toks);
+}
+
+static NodeIdx parse_list_expression(TokenCursor *toks) {
+    ChildCursor exprs = ChildCursor_init();
+
+    while (tok_peek(toks, 0, true).type != T_RBRACE) {
+        ChildCursor_append(&exprs, parse_expression(toks));
+        if (tok_peek(toks, 0, true).type == T_SEMICOLON) {
+            chomp(toks, T_SEMICOLON);
+        } else {
+            break;
+        }
+    }
+
+    NodeIdx list = alloc_node();
+    set_node(list, &(AstNode) {
+        .type = AST_EXPR,
+        .expr = {
+            .type = EXPR_LIST,
+            .list = {
+                .first_child = exprs.first_child
+            }
+        }
+    });
+    return list;
 }
 
 static NodeIdx parse_function(TokenCursor *toks) {
@@ -206,18 +293,15 @@ static NodeIdx parse_function(TokenCursor *toks) {
     }
 
     chomp(toks, T_LBRACE);
-    ChildCursor body = ChildCursor_init();
-    while (!check(toks, T_RBRACE)) {
-        ChildCursor_append(&body, parse_expression(toks));
-    }
+    NodeIdx body = parse_list_expression(toks);
     chomp(toks, T_RBRACE);
 
     set_node(mod, &(AstNode) {
         .type = AST_FN,
-        .first_child = body.first_child,
         .fn = {
             .name = t.ident,
             .first_arg = args.first_child,
+            .body = body,
             .ret = ret,
         }
     });
@@ -247,7 +331,9 @@ done:
 
     set_node(mod, &(AstNode) {
         .type = AST_MODULE,
-        .first_child = children.first_child
+        .module = {
+            .first_child = children.first_child
+        }
     });
 
     return mod;
@@ -257,17 +343,6 @@ static void _indent(int depth) {
     for (int i=0; i<depth; ++i) { putchar(' '); }
 }
 
-static void print_fn_args(NodeIdx first_arg) {
-    for (NodeIdx arg=first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
-        AstNode *n = get_node(arg);
-        assert(n->type == AST_FN_ARG);
-        Str_puts(n->fn_arg.name, stdout);
-        fputs(":", stdout);
-        Str_puts(n->fn_arg.type, stdout);
-        fputs(", ", stdout);
-    }
-}
-
 void print_ast(NodeIdx nidx, int depth) {
     AstNode *node = get_node(nidx);
 
@@ -275,37 +350,55 @@ void print_ast(NodeIdx nidx, int depth) {
         case AST_MODULE:
             _indent(depth);
             printf("module\n");
-            for (NodeIdx child=node->first_child; child != 0; child = get_node(child)->next_sibling) {
+            for (NodeIdx child=node->module.first_child; child != 0; child = get_node(child)->next_sibling) {
                 print_ast(child, depth+1);
             }
+            break;
+        case AST_FN_ARG:
+            Str_puts(node->fn_arg.name, stdout);
+            fputs(":", stdout);
+            Str_puts(node->fn_arg.type, stdout);
             break;
         case AST_FN:
             _indent(depth);
             printf("fn ");
             Str_puts(node->fn.name, stdout);
             printf("(");
-            print_fn_args(node->fn.first_arg);
+            for (NodeIdx child=node->fn.first_arg; child != 0; child = get_node(child)->next_sibling) {
+                print_ast(child, depth+1);
+                fputs(", ", stdout);
+            }
             printf(") -> ");
             Str_puts(node->fn.ret, stdout);
             printf("\n");
-            for (NodeIdx child=node->first_child; child != 0; child = get_node(child)->next_sibling) {
-                print_ast(child, depth+1);
-            }
+            print_ast(node->fn.body, depth+1);
             break;
         case AST_EXPR:
             _indent(depth+1);
             switch (node->expr.type) {
+                case EXPR_LIST:
+                    printf("expr_list\n");
+                    for (NodeIdx child=node->expr.list.first_child; child != 0; child = get_node(child)->next_sibling) {
+                        print_ast(child, depth+1);
+                    }
+                    break;
+                case EXPR_IDENT:
+                    printf("expr_ident ");
+                    Str_puts(node->expr.ident, stdout);
+                    printf("\n");
+                    break;
                 case EXPR_LITERAL:
                     printf("expr_literal ");
                     Str_puts(node->expr.literal, stdout);
                     printf("\n");
                     break;
                 case EXPR_CALL:
-                    printf("expr_call ");
-                    Str_puts(node->expr.call.fn_name, stdout);
-                    printf("()\n");
-                    for (int i=0; i<node->expr.call.args.len; ++i) {
-                        print_ast(*(NodeIdx*)vec_get(&node->expr.call.args, i), depth+1);
+                    printf("expr_call\n");
+                    print_ast(node->expr.call.callee, depth+1);
+                    _indent(depth+2);
+                    printf("args\n");
+                    for (NodeIdx arg=node->expr.call.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
+                        print_ast(arg, depth+2);
                     }
                     break;
             }

@@ -6,36 +6,22 @@
 
 typedef int NodeIdx;
 
-typedef enum ExprType {
-    EXPR_LITERAL,
-    EXPR_CALL
-} ExprType;
-
-typedef struct Call {
-    Str fn_name;
-    Vec/* NodeIdx */ args;
-} Call;
-
-typedef struct Expr {
-    ExprType type;
-    union {
-        Str literal;
-        Call call;
-    };
-} Expr;
-
 typedef struct AstNode {
     enum AstType {
         AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR
     } type;
 
-    NodeIdx first_child;
     NodeIdx next_sibling; /* 0 is end */
 
     union {
         struct {
+            NodeIdx first_child;
+        } module;
+
+        struct {
             Str name;
             NodeIdx first_arg;
+            NodeIdx body;
             Str ret;
         } fn;
 
@@ -44,7 +30,26 @@ typedef struct AstNode {
             Str type;
         } fn_arg;
 
-        struct Expr expr;
+        struct {
+            enum ExprType {
+                EXPR_LIST,  // like C comma operator, but using ;
+                EXPR_IDENT,
+                EXPR_LITERAL,
+                EXPR_CALL
+            } type;
+
+            union {
+                struct {
+                    NodeIdx first_child;
+                } list;
+                Str ident;
+                Str literal;
+                struct {
+                    NodeIdx callee;
+                    NodeIdx first_arg;
+                } call;
+            };
+        } expr;
     };
 
 } AstNode;
@@ -57,5 +62,6 @@ typedef struct TokenCursor {
 extern void init_parser();
 extern NodeIdx parse_module(TokenCursor *toks);
 extern void print_ast(NodeIdx nidx, int depth);
+AstNode *get_node(NodeIdx idx);
 
 #endif /* __PARSER_H */

@@ -20,5 +20,6 @@ extern void vec_push(Vec *v, const void *elem);
 extern void vec_pop(Vec *v, void *popped);
 extern void vec_concat(Vec *v, const void *elems, size_t num_elems);
 extern void vec_resize(Vec *v, size_t num_elems);
+extern void vec_zero(Vec *v);
 
 #endif /* __VEC_H */
