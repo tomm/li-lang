@@ -180,9 +180,9 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
             .expr = {
-                .type = EXPR_CALL,
-                .call = {
-                    .callee = make_ident_node("*"),
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = BUILTIN_MUL,
                     .first_arg = args.first_child,
                 }
             }
@@ -195,8 +195,13 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
 static NodeIdx parse_additive_expression(TokenCursor *toks) {
     NodeIdx n = parse_multiplicative_expression(toks);
 
-    while (tok_peek(toks, 0, true).type == T_PLUS) {
-        chomp(toks, T_PLUS);
+    while (tok_peek(toks, 0, true).type == T_PLUS ||
+           tok_peek(toks, 0, true).type == T_MINUS ||
+           tok_peek(toks, 0, true).type == T_BITAND ||
+           tok_peek(toks, 0, true).type == T_BITOR ||
+           tok_peek(toks, 0, true).type == T_BITXOR
+    ) {
+        Token t = tok_next(toks, true);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -206,9 +211,16 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
             .expr = {
-                .type = EXPR_CALL,
-                .call = {
-                    .callee = make_ident_node("+"),
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = (
+                        t.type == T_PLUS ? BUILTIN_ADD
+                        : t.type == T_MINUS ? BUILTIN_SUB
+                        : t.type == T_BITAND ? BUILTIN_BITAND
+                        : t.type == T_BITOR ? BUILTIN_BITOR
+                        : t.type == T_BITXOR ? BUILTIN_BITXOR
+                        : (abort(), BUILTIN_ADD)
+                    ),
                     .first_arg = args.first_child
                 }
             }
@@ -398,6 +410,14 @@ void print_ast(NodeIdx nidx, int depth) {
                     _indent(depth+2);
                     printf("args\n");
                     for (NodeIdx arg=node->expr.call.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
+                        print_ast(arg, depth+2);
+                    }
+                    break;
+                case EXPR_BUILTIN:
+                    printf("expr_builtin (op=%d)\n", node->expr.builtin.op);
+                    _indent(depth+2);
+                    printf("args\n");
+                    for (NodeIdx arg=node->expr.builtin.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
                         print_ast(arg, depth+2);
                     }
                     break;

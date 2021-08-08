@@ -35,7 +35,8 @@ typedef struct AstNode {
                 EXPR_LIST,  // like C comma operator, but using ;
                 EXPR_IDENT,
                 EXPR_LITERAL,
-                EXPR_CALL
+                EXPR_CALL,
+                EXPR_BUILTIN
             } type;
 
             union {
@@ -48,6 +49,17 @@ typedef struct AstNode {
                     NodeIdx callee;
                     NodeIdx first_arg;
                 } call;
+                struct {
+                    NodeIdx first_arg;
+                    enum BuiltinOp {
+                        BUILTIN_ADD,
+                        BUILTIN_SUB,
+                        BUILTIN_BITAND,
+                        BUILTIN_BITOR,
+                        BUILTIN_BITXOR,
+                        BUILTIN_MUL
+                    } op;
+                } builtin;
             };
         } expr;
     };

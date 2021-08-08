@@ -77,6 +77,47 @@ static void emit_pop(FILE *out, Type t, StackFrame *frame) {
 }
 static Type emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
 
+static Type emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
+    AstNode *n = get_node(call);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
+
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    assert(arg1->next_sibling != 0);
+
+    Type ta1 = emit_expression(out, arg1->next_sibling, frame);
+    emit_push(out, ta1, &frame);
+    Type ta2 = emit_expression(out, n->expr.builtin.first_arg, frame);
+
+    assert(ta1 == U8 && ta2 == U8);
+    emit_pop(out, ta1, &frame);
+
+    // a=arg1, b=arg2
+
+    // assumes binary op
+    switch (n->expr.builtin.op) {
+        case BUILTIN_ADD:
+            fprintf(out, "\t\tadd a, b\n");
+            break;
+        case BUILTIN_SUB:
+            fprintf(out, "\t\tsub a, b\n");
+            break;
+        case BUILTIN_BITOR:
+            fprintf(out, "\t\tor a, b\n");
+            break;
+        case BUILTIN_BITAND:
+            fprintf(out, "\t\tand a, b\n");
+            break;
+        case BUILTIN_BITXOR:
+            fprintf(out, "\t\txor a, b\n");
+            break;
+        default:
+            fprintf(stderr, "builtin operator %d not implemented\n", n->expr.builtin.op);
+            abort();
+            break;
+    }
+    return U8;
+}
+
 static Type emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     Type t = VOID;
     AstNode *n = get_node(call);
@@ -85,28 +126,10 @@ static Type emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-        if (Str_eq(callee->expr.ident, "+")) {
-            AstNode *arg1 = get_node(n->expr.call.first_arg);
-            assert(arg1->next_sibling != 0);
-
-            Type ta1 = emit_expression(out, arg1->next_sibling, frame);
-            emit_push(out, ta1, &frame);
-            Type ta2 = emit_expression(out, n->expr.call.first_arg, frame);
-
-            assert(ta1 == U8 && ta2 == U8);
-            emit_pop(out, ta1, &frame);
-            fprintf(out, "\t\tadd a, b\n");
-            return U8;
-        }
-        //else if (Str_eq(callee->expr.ident, "-")) {
-        
-        //}
-        else {
-            fprintf(stderr, "Not implemented (%.*s)\n", (int)callee->expr.ident.len, callee->expr.ident.s);
-            exit(-1);
-        }
+        fprintf(stderr, "fn call by identifier not implemented (%.*s)\n", (int)callee->expr.ident.len, callee->expr.ident.s);
+        exit(-1);
     } else {
-        fprintf(stderr, "Not implemented\n");
+        fprintf(stderr, "fn call by expression not implemented\n");
     }
 
     return t;
@@ -118,6 +141,8 @@ static Type emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
     assert(n->type == AST_EXPR);
 
     switch (n->expr.type) {
+        case EXPR_BUILTIN:
+            return emit_builtin(out, expr, frame);
         case EXPR_CALL:
             return emit_call(out, expr, frame);
         case EXPR_LIST:

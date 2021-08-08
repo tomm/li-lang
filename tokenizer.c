@@ -12,6 +12,9 @@ const char *token_type_cstr(enum TokType type) {
         case T_COLON: return ":";
         case T_MINUS: return "-";
         case T_PLUS: return "+";
+        case T_BITAND: return "&";
+        case T_BITOR: return "|";
+        case T_BITXOR: return "^";
         case T_FN: return "fn";
         case T_GT: return ">";
         case T_AS: return "as";
@@ -50,6 +53,9 @@ Vec lex(Str buf) {
         }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col })); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col })); NEXT(); }
+        else if (*pos == '&') { EMIT(((Token) { T_BITAND, line, col })); NEXT(); }
+        else if (*pos == '|') { EMIT(((Token) { T_BITOR, line, col })); NEXT(); }
+        else if (*pos == '^') { EMIT(((Token) { T_BITXOR, line, col })); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col })); NEXT(); }
         else if (*pos == ',') { EMIT(((Token) { T_COMMA, line, col })); NEXT(); }
