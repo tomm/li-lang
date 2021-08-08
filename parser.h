@@ -5,12 +5,14 @@
 #include "str.h"
 
 typedef int NodeIdx;
+typedef struct Token Token;
 
 typedef struct AstNode {
     enum AstType {
         AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR
     } type;
 
+    const Token *start_token; /* for error reporting */
     NodeIdx next_sibling; /* 0 is end */
 
     union {

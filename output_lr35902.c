@@ -1,8 +1,10 @@
 #include "output_lr35902.h"
 #include <stdio.h>
 #include <assert.h>
+#include <stdarg.h>
 #include "str.h"
 #include "vec.h"
+#include "tokenizer.h"
 
 static void emit_boilerplate(FILE *out) {
     fputs(
@@ -48,6 +50,18 @@ static StackVarIdx alloc_var() {
     StackVarIdx idx = _stack_vars.len;
     vec_push(&_stack_vars, &v);
     return idx;
+}
+
+static void compile_error(const AstNode *at, const char *format, ...) __attribute__((format(printf, 2, 3)));
+static void compile_error(const AstNode *at, const char *format, ...) {
+	char buf[1024];
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+    fprintf(stderr, "%d:%d: %s\n",
+            at->start_token->line, at->start_token->col, buf);
+    exit(-1);
 }
 
 static StackVar *get_stack_var(StackVarIdx idx) {
@@ -111,7 +125,7 @@ static Type emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
             fprintf(out, "\t\txor a, b\n");
             break;
         default:
-            fprintf(stderr, "builtin operator %d not implemented\n", n->expr.builtin.op);
+            compile_error(n, "builtin operator %d not implemented", n->expr.builtin.op);
             abort();
             break;
     }
@@ -126,10 +140,9 @@ static Type emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-        fprintf(stderr, "fn call by identifier not implemented (%.*s)\n", (int)callee->expr.ident.len, callee->expr.ident.s);
-        exit(-1);
+        compile_error(callee, "fn call by identifier not implemented");
     } else {
-        fprintf(stderr, "fn call by expression not implemented\n");
+        compile_error(callee, "fn call by expression not implemented");
     }
 
     return t;

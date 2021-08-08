@@ -4,28 +4,28 @@
 
 static Vec _node_alloc;
 
-static Token tok_peek(TokenCursor *cursor, int ahead, bool skip_space) {
+static const Token *tok_peek(TokenCursor *cursor, int ahead, bool skip_space) {
     int next = cursor->next;
     while (next < cursor->tokens.len) {
-        Token t = *(Token*)vec_get(&cursor->tokens, next);
+        const Token *t = (Token*)vec_get(&cursor->tokens, next);
         next++;
 
-        if (skip_space && t.type == T_SPACE) continue;
+        if (skip_space && t->type == T_SPACE) continue;
         if (ahead-- == 0) {
             return t;
         }
     }
     fprintf(stderr, "tok_peek() called at EOF position\n");
     fflush(stderr);
-    return (Token) { T_EOF };
+    abort();
 }
 
-static Token tok_next(TokenCursor *cursor, bool skip_space) {
+static const Token *tok_next(TokenCursor *cursor, bool skip_space) {
     while (cursor->next < cursor->tokens.len) {
-        Token t = *(Token*)vec_get(&cursor->tokens, cursor->next);
+        const Token *t = (Token*)vec_get(&cursor->tokens, cursor->next);
         cursor->next++;
 
-        if (skip_space && t.type == T_SPACE) continue;
+        if (skip_space && t->type == T_SPACE) continue;
         return t;
     }
     fprintf(stderr, "tok_next() called at EOF position\n");
@@ -46,7 +46,7 @@ static NodeIdx alloc_node() {
     return idx;
 }
 
-static void parse_error(const char *msg, enum TokType expected, Token *got) {
+static void parse_error(const char *msg, enum TokType expected, const Token *got) {
     fprintf(stderr, "%d:%d: %s (expected %s but found %s)\n",
             got->line, got->col, msg, token_type_cstr(expected), token_type_cstr(got->type));
     exit(-1);
@@ -72,44 +72,45 @@ static void ChildCursor_append(ChildCursor *cursor, NodeIdx child) {
     }
 }
 
-static Token chomp(TokenCursor *toks, enum TokType type) {
-    Token t = tok_next(toks, true);
-    if (t.type != type) {
-        parse_error("Unexpected token", type, &t);
+static const Token *chomp(TokenCursor *toks, enum TokType type) {
+    const Token *t = tok_next(toks, true);
+    if (t->type != type) {
+        parse_error("Unexpected token", type, t);
     }
     return t;
 }
 
 static bool check(TokenCursor *toks, enum TokType type) {
-    Token t = tok_peek(toks, 0, true);
-    return t.type == type;
+    return tok_peek(toks, 0, true)->type == type;
 }
 
 static NodeIdx parse_primary_expression(TokenCursor *toks) {
-    Token t = tok_next(toks, true);
+    const Token *t = tok_next(toks, true);
     NodeIdx expr = alloc_node();
 
-    switch (t.type) {
+    switch (t->type) {
         case T_DECIMAL:
             set_node(expr, &(AstNode) {
+                .start_token = t,
                 .type = AST_EXPR,
                 .expr = {
                     .type = EXPR_LITERAL,
-                    .literal = t.decimal
+                    .literal = t->decimal
                 }
             });
             break;
         case T_IDENT:
             set_node(expr, &(AstNode) {
+                .start_token = t,
                 .type = AST_EXPR,
                 .expr = {
                     .type = EXPR_IDENT,
-                    .ident = t.ident
+                    .ident = t->ident
                 }
             });
             break;
         default:
-            parse_error("Expected primary expression", 0, &t);
+            parse_error("Expected primary expression", 0, t);
     }
         
     return expr;
@@ -121,13 +122,13 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     NodeIdx n = parse_primary_expression(toks);
 
     // function call
-    if (tok_peek(toks, 0, true).type == T_LPAREN) {
-        chomp(toks, T_LPAREN);
+    if (tok_peek(toks, 0, true)->type == T_LPAREN) {
+        const Token *start_token = chomp(toks, T_LPAREN);
 
         ChildCursor args = ChildCursor_init();
-        while (tok_peek(toks, 0, true).type != T_RPAREN) {
+        while (tok_peek(toks, 0, true)->type != T_RPAREN) {
             ChildCursor_append(&args, parse_expression(toks));
-            if (tok_peek(toks, 0, true).type != T_COMMA) {
+            if (tok_peek(toks, 0, true)->type != T_COMMA) {
                 break;
             }
             chomp(toks, T_COMMA);
@@ -137,6 +138,7 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
 
         NodeIdx call = alloc_node();
         set_node(call, &(AstNode) {
+            .start_token = start_token,
             .type = AST_EXPR,
             .expr = {
                 .type = EXPR_CALL,
@@ -153,24 +155,11 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     }
 }
 
-static NodeIdx make_ident_node(char *ident)
-{
-    NodeIdx n = alloc_node();
-    set_node(n, &(AstNode) {
-        .type = AST_EXPR,
-        .expr = {
-            .type = EXPR_IDENT,
-            .ident = { .s = ident, .len = strlen(ident) }
-        }
-    });
-    return n;
-}
-
 static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
     NodeIdx n = parse_postfix_expression(toks);
 
-    while (tok_peek(toks, 0, true).type == T_ASTERISK) {
-        chomp(toks, T_ASTERISK);
+    while (tok_peek(toks, 0, true)->type == T_ASTERISK) {
+        const Token *start_token = chomp(toks, T_ASTERISK);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -179,6 +168,7 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
         n = alloc_node();
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
+            .start_token = start_token,
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
@@ -195,13 +185,13 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
 static NodeIdx parse_additive_expression(TokenCursor *toks) {
     NodeIdx n = parse_multiplicative_expression(toks);
 
-    while (tok_peek(toks, 0, true).type == T_PLUS ||
-           tok_peek(toks, 0, true).type == T_MINUS ||
-           tok_peek(toks, 0, true).type == T_BITAND ||
-           tok_peek(toks, 0, true).type == T_BITOR ||
-           tok_peek(toks, 0, true).type == T_BITXOR
+    while (tok_peek(toks, 0, true)->type == T_PLUS ||
+           tok_peek(toks, 0, true)->type == T_MINUS ||
+           tok_peek(toks, 0, true)->type == T_BITAND ||
+           tok_peek(toks, 0, true)->type == T_BITOR ||
+           tok_peek(toks, 0, true)->type == T_BITXOR
     ) {
-        Token t = tok_next(toks, true);
+        const Token *t = tok_next(toks, true);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -210,15 +200,16 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
         n = alloc_node();
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
+            .start_token = t,
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
                     .op = (
-                        t.type == T_PLUS ? BUILTIN_ADD
-                        : t.type == T_MINUS ? BUILTIN_SUB
-                        : t.type == T_BITAND ? BUILTIN_BITAND
-                        : t.type == T_BITOR ? BUILTIN_BITOR
-                        : t.type == T_BITXOR ? BUILTIN_BITXOR
+                        t->type == T_PLUS ? BUILTIN_ADD
+                        : t->type == T_MINUS ? BUILTIN_SUB
+                        : t->type == T_BITAND ? BUILTIN_BITAND
+                        : t->type == T_BITOR ? BUILTIN_BITOR
+                        : t->type == T_BITXOR ? BUILTIN_BITXOR
                         : (abort(), BUILTIN_ADD)
                     ),
                     .first_arg = args.first_child
@@ -236,10 +227,12 @@ static NodeIdx parse_expression(TokenCursor *toks) {
 
 static NodeIdx parse_list_expression(TokenCursor *toks) {
     ChildCursor exprs = ChildCursor_init();
+    
+    const Token *start_token = tok_peek(toks, 0, true);
 
-    while (tok_peek(toks, 0, true).type != T_RBRACE) {
+    while (tok_peek(toks, 0, true)->type != T_RBRACE) {
         ChildCursor_append(&exprs, parse_expression(toks));
-        if (tok_peek(toks, 0, true).type == T_SEMICOLON) {
+        if (tok_peek(toks, 0, true)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
         } else {
             break;
@@ -249,6 +242,7 @@ static NodeIdx parse_list_expression(TokenCursor *toks) {
     NodeIdx list = alloc_node();
     set_node(list, &(AstNode) {
         .type = AST_EXPR,
+        .start_token = start_token,
         .expr = {
             .type = EXPR_LIST,
             .list = {
@@ -263,23 +257,23 @@ static NodeIdx parse_function(TokenCursor *toks) {
     NodeIdx mod = alloc_node();
 
     // expect function name
-    Token t = tok_next(toks, true);
+    const Token *t = tok_next(toks, true);
 
-    if (t.type != T_IDENT) {
-        parse_error("Expected function name", T_IDENT, &t);
+    if (t->type != T_IDENT) {
+        parse_error("Expected function name", T_IDENT, t);
     }
 
     chomp(toks, T_LPAREN);
 
     ChildCursor args = ChildCursor_init();
     {
-        while (tok_peek(toks, 0, true).type == T_IDENT) {
+        while (tok_peek(toks, 0, true)->type == T_IDENT) {
             NodeIdx a = alloc_node();
             AstNode *n = get_node(a);
             n->type = AST_FN_ARG;
-            n->fn_arg.name = chomp(toks, T_IDENT).ident;
+            n->fn_arg.name = chomp(toks, T_IDENT)->ident;
             chomp(toks, T_COLON);
-            n->fn_arg.type = chomp(toks, T_IDENT).ident;
+            n->fn_arg.type = chomp(toks, T_IDENT)->ident;
 
             ChildCursor_append(&args, a);
 
@@ -294,11 +288,11 @@ static NodeIdx parse_function(TokenCursor *toks) {
     if (check(toks, T_RARROW)) {
         chomp(toks, T_RARROW);
 
-        Token ret_token = tok_next(toks, true);
-        if (ret_token.type == T_IDENT) {
-            ret = ret_token.ident;
+        const Token *ret_token = tok_next(toks, true);
+        if (ret_token->type == T_IDENT) {
+            ret = ret_token->ident;
         } else {
-            parse_error("Expected return type", T_IDENT, &ret_token);
+            parse_error("Expected return type", T_IDENT, ret_token);
         }
     } else {
         ret = (Str) { .s = "void", .len = 4 };
@@ -311,7 +305,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
     set_node(mod, &(AstNode) {
         .type = AST_FN,
         .fn = {
-            .name = t.ident,
+            .name = t->ident,
             .first_arg = args.first_child,
             .body = body,
             .ret = ret,
@@ -326,16 +320,16 @@ NodeIdx parse_module(TokenCursor *toks) {
     ChildCursor children = ChildCursor_init();
 
     for (;;) {
-        Token t = tok_next(toks, true);
+        const Token *t = tok_next(toks, true);
 
-        switch (t.type) {
+        switch (t->type) {
             case T_FN:
                 ChildCursor_append(&children, parse_function(toks));
                 break;
             case T_EOF:
                 goto done;
             default:
-                parse_error("Expected function or end of file", T_FN, &t);
+                parse_error("Expected function or end of file", T_FN, t);
         }
     }
 
