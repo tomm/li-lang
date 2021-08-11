@@ -16,6 +16,9 @@ fn blah() {
   test2(_hey_jude())
 }
 */
+fn test1(a: u8, b: u8, c: u16, d: u8) -> u8 {
+  9
+}
 fn main() {
   128;
   40+10-9&1

@@ -13,13 +13,12 @@ typedef struct Str {
 
 static inline void Str_free(Str s) { free(s.s); }
 static inline void Str_puts(Str s, FILE *f) { for (size_t p=0; p < s.len; ++p) { fputc(s.s[p], f); } }
-static inline bool Str_eq(Str s, const char *t) {
-    if (s.len != strlen(t)) return false;
-
-    for (size_t p=0; p < s.len; ++p) {
-        if (s.s[p] != t[p]) return false;
-    }
-    return true;
+static inline bool Str_eq2(Str a, Str b) {
+    if (a.len != b.len) return false;
+    return memcmp(a.s, b.s, a.len) == 0;
+}
+static inline bool Str_eq(Str s, char *t) {
+    return Str_eq2(s, (Str) { .s = t, .len = strlen(t) });
 }
 
 #endif /* __STR_H */

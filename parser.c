@@ -254,7 +254,7 @@ static NodeIdx parse_list_expression(TokenCursor *toks) {
 }
 
 static NodeIdx parse_function(TokenCursor *toks) {
-    NodeIdx mod = alloc_node();
+    NodeIdx fn = alloc_node();
 
     // expect function name
     const Token *t = tok_next(toks, true);
@@ -271,7 +271,8 @@ static NodeIdx parse_function(TokenCursor *toks) {
             NodeIdx a = alloc_node();
             AstNode *n = get_node(a);
             n->type = AST_FN_ARG;
-            n->fn_arg.name = chomp(toks, T_IDENT)->ident;
+            n->start_token = chomp(toks, T_IDENT);
+            n->fn_arg.name = n->start_token->ident;
             chomp(toks, T_COLON);
             n->fn_arg.type = chomp(toks, T_IDENT)->ident;
 
@@ -302,8 +303,9 @@ static NodeIdx parse_function(TokenCursor *toks) {
     NodeIdx body = parse_list_expression(toks);
     chomp(toks, T_RBRACE);
 
-    set_node(mod, &(AstNode) {
+    set_node(fn, &(AstNode) {
         .type = AST_FN,
+        .start_token = t,
         .fn = {
             .name = t->ident,
             .first_arg = args.first_child,
@@ -312,15 +314,16 @@ static NodeIdx parse_function(TokenCursor *toks) {
         }
     });
 
-    return mod;
+    return fn;
 }
 
 NodeIdx parse_module(TokenCursor *toks) {
     NodeIdx mod = alloc_node();
     ChildCursor children = ChildCursor_init();
+    const Token *t;
 
     for (;;) {
-        const Token *t = tok_next(toks, true);
+        t = tok_next(toks, true);
 
         switch (t->type) {
             case T_FN:
@@ -337,6 +340,7 @@ done:
 
     set_node(mod, &(AstNode) {
         .type = AST_MODULE,
+        .start_token = t,
         .module = {
             .first_child = children.first_child
         }

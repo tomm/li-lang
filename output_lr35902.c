@@ -5,6 +5,7 @@
 #include "str.h"
 #include "vec.h"
 #include "tokenizer.h"
+#include "types.h"
 
 static void emit_boilerplate(FILE *out) {
     fputs(
@@ -24,14 +25,17 @@ static void emit_boilerplate(FILE *out) {
     , out);
 }
 
-typedef enum Type {
-    VOID,
-    U8
-} Type;
+typedef struct Value {
+    TypeId typeId;
+    enum Storage {
+        ST_REG_EA,
+        ST_REG_VAL
+    } storage;
+} Value;
 
 typedef int StackVarIdx;
 typedef struct StackVar {
-    enum Type type;
+    TypeId type;
     Str ident;
     int offset; // from SP on function entry
 } StackVar;
@@ -68,39 +72,41 @@ static StackVar *get_stack_var(StackVarIdx idx) {
     return vec_get(&_stack_vars, idx);
 }
 
-static void emit_push(FILE *out, Type t, StackFrame *frame) {
+static void emit_push(FILE *out, TypeId t, StackFrame *frame) {
     switch (t) {
         case VOID: abort();
         case U8:
             fprintf(out, "\t\tpush af\n");
             frame->stack_offset -= 2;
             return;
+        default: abort();
     }
 
 }
 
-static void emit_pop(FILE *out, Type t, StackFrame *frame) {
+static void emit_pop(FILE *out, TypeId t, StackFrame *frame) {
     switch (t) {
         case VOID: abort();
         case U8:
             fprintf(out, "\t\tpop bc\n");
             frame->stack_offset += 2;
             return;
+        default: abort();
     }
 
 }
-static Type emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
+static TypeId emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
 
-static Type emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
+static TypeId emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
 
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
     assert(arg1->next_sibling != 0);
 
-    Type ta1 = emit_expression(out, arg1->next_sibling, frame);
+    TypeId ta1 = emit_expression(out, arg1->next_sibling, frame);
     emit_push(out, ta1, &frame);
-    Type ta2 = emit_expression(out, n->expr.builtin.first_arg, frame);
+    TypeId ta2 = emit_expression(out, n->expr.builtin.first_arg, frame);
 
     assert(ta1 == U8 && ta2 == U8);
     emit_pop(out, ta1, &frame);
@@ -132,8 +138,8 @@ static Type emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
     return U8;
 }
 
-static Type emit_call(FILE *out, NodeIdx call, StackFrame frame) {
-    Type t = VOID;
+static TypeId emit_call(FILE *out, NodeIdx call, StackFrame frame) {
+    TypeId t = VOID;
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
 
@@ -148,8 +154,8 @@ static Type emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     return t;
 }
 
-static Type emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
-    Type t = VOID;
+static TypeId emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
+    TypeId t = VOID;
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR);
 
@@ -174,6 +180,15 @@ static Type emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
     return t;
 }
 
+static TypeId find_type(AstNode *n, Str typename) {
+    printf("Looking up type %.*s\n", (int)typename.len, typename.s);
+    TypeId id = lookup_type(typename);
+    if (id == -1) {
+        compile_error(n, "Unknown type %.*s", (int)typename.len, typename.s);
+    }
+    return id;
+}
+
 static void emit_fn(FILE *out, NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
     assert(fn_node->type == AST_FN);
@@ -187,23 +202,26 @@ static void emit_fn(FILE *out, NodeIdx fn) {
     int bp_offset = 2; // return address at 0(sp), 1(sp)
     for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
         assert(get_node(arg)->type == AST_FN_ARG);
+        
+        TypeId argtype = find_type(get_node(arg), get_node(arg)->fn_arg.type);
 
         StackVarIdx v = alloc_var();
         *get_stack_var(v) = (StackVar) {
-            .type = U8,
+            .type = argtype,
             .ident = get_node(arg)->fn_arg.name,
-            .offset = bp_offset++
+            .offset = bp_offset
         };
+        bp_offset += get_type(argtype)->stack_size;
     }
 
     for (int i=0; i<_stack_vars.len; ++i) {
         StackVar *v = get_stack_var(i);
-        fprintf(out, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
+        fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
     }
 
     StackFrame frame = { .num_vars = _stack_vars.len, .stack_offset = 0 };
     
-    Type ret_type = emit_expression(out, fn_node->fn.body, frame);
+    TypeId ret_type = emit_expression(out, fn_node->fn.body, frame);
     assert(ret_type == U8);
 
     // expect U8 result in 'a' register
@@ -216,6 +234,7 @@ static void init() {
 
 void output_lr35902(NodeIdx root) {
     init();
+    init_types();
 
     FILE *out = fopen("out.asm", "w");
 
