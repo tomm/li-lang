@@ -36,7 +36,8 @@ typedef struct AstNode {
             enum ExprType {
                 EXPR_LIST,  // like C comma operator, but using ;
                 EXPR_IDENT,
-                EXPR_LITERAL,
+                EXPR_LITERAL_U8,
+                EXPR_LITERAL_U16,
                 EXPR_CALL,
                 EXPR_BUILTIN
             } type;
@@ -46,7 +47,7 @@ typedef struct AstNode {
                     NodeIdx first_child;
                 } list;
                 Str ident;
-                Str literal;
+                int literal_int;
                 struct {
                     NodeIdx callee;
                     NodeIdx first_arg;

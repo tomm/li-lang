@@ -73,6 +73,18 @@ static void compile_error(const AstNode *at, const char *format, ...) {
     exit(-1);
 }
 
+/* opcode output */
+static void _(FILE *f, const char *format, ...) __attribute__((format(printf, 2, 3)));
+static void _(FILE *f, const char *format, ...) {
+	char buf[256];
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+    fputs("\t\t", f);
+    fputs(buf, f);
+    fputs("\n", f);
+}
 static StackVar *get_stack_var(StackVarIdx idx) {
     return vec_get(&_stack_vars, idx);
 }
@@ -84,27 +96,36 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
     if (v.typeId == U8) {
         switch (v.storage) {
             case ST_REG_EA:
-                fprintf(out, "\t\tld %s, [hl]\n", to_aux_reg ? "b" : "a");
+                _(out, "ld %s, [hl]", to_aux_reg ? "b" : "a");
                 return (Value) { .typeId = U8, .storage = st };
             case ST_REG_VAL:
-                assert(to_aux_reg == false);
+                if (st != v.storage) {
+                    _(out, "ld b, a");
+                }
                 return (Value) { .typeId = U8, .storage = st };
             case ST_REG_VAL_AUX:
-                assert(to_aux_reg == true);
+                if (st != v.storage) {
+                    _(out, "ld a, b");
+                }
                 return (Value) { .typeId = U8, .storage = st };
         }
     } else {
         switch (v.storage) {
             case ST_REG_EA:
-                fprintf(out, "\t\tld a, [hl+]\n");
-                fprintf(out, "\t\tld %s, [hl]\n", to_aux_reg ? "d" : "h");
-                fprintf(out, "\t\tld %s, a\n", to_aux_reg ? "e" : "l");
+                _(out, "ld a, [hl+]");
+                _(out, "ld %s, [hl]", to_aux_reg ? "d" : "h");
+                _(out, "ld %s, a", to_aux_reg ? "e" : "l");
                 return (Value) { .typeId = U16, .storage = st };
             case ST_REG_VAL:
-                assert(to_aux_reg == false);
+                if (st != v.storage) {
+                    _(out, "ld d, h");
+                    _(out, "ld e, l");
+                }
                 return (Value) { .typeId = U16, .storage = st };
             case ST_REG_VAL_AUX:
-                assert(to_aux_reg == true);
+                if (st != v.storage) {
+                    _(out, "ld hl, de");
+                }
                 return (Value) { .typeId = U16, .storage = st };
         }
     }
@@ -116,11 +137,11 @@ static void emit_push(FILE *out, Value v, StackFrame *frame) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    fprintf(out, "\t\tpush af\n");
+                    _(out, "push af");
                     frame->stack_offset += 2;
                     return;
                 case U16:
-                    fprintf(out, "\t\tpush hl\n");
+                    _(out, "push hl");
                     frame->stack_offset += 2;
                     return;
                 default: assert(false);
@@ -129,11 +150,11 @@ static void emit_push(FILE *out, Value v, StackFrame *frame) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    fprintf(out, "\t\tpush hl\n");
+                    _(out, "push hl");
                     frame->stack_offset += 2;
                     return;
                 case U16:
-                    fprintf(out, "\t\tpush hl\n");
+                    _(out, "push hl");
                     frame->stack_offset += 2;
                     return;
                 default: assert(false);
@@ -151,11 +172,11 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    fprintf(out, "\t\tpop %s\n", to_aux_reg ? "bc" : "af");
+                    _(out, "pop %s", to_aux_reg ? "bc" : "af");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = st, .typeId = U8 };
                 case U16:
-                    fprintf(out, "\t\tpop %s\n", to_aux_reg ? "de" : "hl");
+                    _(out, "pop %s", to_aux_reg ? "de" : "hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = st, .typeId = U16 };
                 default: assert(false);
@@ -164,11 +185,11 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    fprintf(out, "\t\tpop hl\n");
+                    _(out, "pop hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = ST_REG_EA, .typeId = U8 };
                 case U16:
-                    fprintf(out, "\t\tpop hl\n");
+                    _(out, "pop hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = ST_REG_EA, .typeId = U16 };
                 default: assert(false);
@@ -177,26 +198,28 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
 }
 static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
 
-static Value emit_builtin_u8(FILE *out, enum BuiltinOp op, Value v1, Value v2) {
-
-    const char *v2reg = v2.storage == ST_REG_EA ? "[hl]" : "b";
+static Value emit_builtin_u8(FILE *out, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+    // v1 on stack, v2 as tmp (active Value)
+    v2 = emit_value_to_register(out, v2, true);   // v2 in `b`
+    v1 = emit_pop(out, v1, frame, false);
+    v1 = emit_value_to_register(out, v1, false);  // v1 in `a`
 
     // assumes binary op
     switch (op) {
         case BUILTIN_ADD:
-            fprintf(out, "\t\tadd a, %s\n", v2reg);
+            _(out, "add a, b");
             break;
         case BUILTIN_SUB:
-            fprintf(out, "\t\tsub a, %s\n", v2reg);
+            _(out, "sub a, b");
             break;
         case BUILTIN_BITOR:
-            fprintf(out, "\t\tor a, %s\n", v2reg);
+            _(out, "or a, b");
             break;
         case BUILTIN_BITAND:
-            fprintf(out, "\t\tand a, %s\n", v2reg);
+            _(out, "and a, b");
             break;
         case BUILTIN_BITXOR:
-            fprintf(out, "\t\txor a, %s\n", v2reg);
+            _(out, "xor a, b");
             break;
         default:
             assert(false);
@@ -205,25 +228,51 @@ static Value emit_builtin_u8(FILE *out, enum BuiltinOp op, Value v1, Value v2) {
     return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin_u16(FILE *out, enum BuiltinOp op, Value v1, Value v2) {
-    // need both in register
-    v1 = emit_value_to_register(out, v1, false);
+static Value emit_builtin_u16(FILE *out, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+    // v1 on stack, v2 as tmp (active Value)
+    v2 = emit_value_to_register(out, v2, true);   // v2 in `de`
+    v1 = emit_pop(out, v1, frame, false);
+    v1 = emit_value_to_register(out, v1, false);  // v1 in `hl`
 
     switch (op) {
         case BUILTIN_ADD:
-            fprintf(out, "\t\tadd hl, de\n");
+            _(out, "add hl, de");
             break;
         case BUILTIN_SUB:
-            //fprintf(out, "\t\tsub a, %s\n", reg);
+            _(out, "ld a, l");
+            _(out, "sub a, e");
+            _(out, "ld l, a");
+
+            _(out, "ld a, h");
+            _(out, "sbc a, d");
+            _(out, "ld h, a");
             break;
         case BUILTIN_BITOR:
-            //fprintf(out, "\t\tor a, %s\n", reg);
+            _(out, "ld a, h");
+            _(out, "or a, d");
+            _(out, "ld h, a");
+
+            _(out, "ld a, l");
+            _(out, "or a, e");
+            _(out, "ld l, a");
             break;
         case BUILTIN_BITAND:
-            //fprintf(out, "\t\tand a, %s\n", reg);
+            _(out, "ld a, h");
+            _(out, "and a, d");
+            _(out, "ld h, a");
+
+            _(out, "ld a, l");
+            _(out, "and a, e");
+            _(out, "ld l, a");
             break;
         case BUILTIN_BITXOR:
-            //fprintf(out, "\t\txor a, %s\n", reg);
+            _(out, "ld a, h");
+            _(out, "xor a, d");
+            _(out, "ld h, a");
+
+            _(out, "ld a, l");
+            _(out, "xor a, e");
+            _(out, "ld l, a");
             break;
         default:
             assert(false);
@@ -239,12 +288,9 @@ static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
     assert(arg1->next_sibling != 0);
 
-    Value v2 = emit_expression(out, arg1->next_sibling, frame);
-    emit_push(out, v2, &frame);
     Value v1 = emit_expression(out, n->expr.builtin.first_arg, frame);
-    // need v1 in register `a`
-    v1 = emit_value_to_register(out, v1, false);
-    v2 = emit_pop(out, v2, &frame, true);
+    emit_push(out, v1, &frame);
+    Value v2 = emit_expression(out, arg1->next_sibling, frame);
 
     if (!is_type_eq(v2.typeId, v1.typeId)) {
         compile_error(n, "builtin operator expects same types. found %.*s and %.*s",
@@ -256,8 +302,8 @@ static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
 
 
     switch (v2.typeId) {
-        case U8: return emit_builtin_u8(out, n->expr.builtin.op, v1, v2);
-        case U16: return emit_builtin_u16(out, n->expr.builtin.op, v1, v2);
+        case U8: return emit_builtin_u8(out, &frame, n->expr.builtin.op, v1, v2);
+        case U16: return emit_builtin_u16(out, &frame, n->expr.builtin.op, v1, v2);
         default: assert(false);
     }
 }
@@ -288,9 +334,9 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
         const int old_stack = frame.stack_offset;
         emit_call_push_args(out, n->expr.call.first_arg, &frame);
         // XXX does not check function exists, or check argument types!
-        fprintf(out, "\t\tcall %.*s\n", (int)callee->expr.ident.len, callee->expr.ident.s);
+        _(out, "call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
         const int stack_correction = frame.stack_offset - old_stack;
-        fprintf(out, "\t\tadd sp, %d\n", stack_correction);
+        _(out, "add sp, %d", stack_correction);
         frame.stack_offset += stack_correction;
         // XXX GET CALL RETURN TYPE??
         return (Value) { .typeId = U8, .storage = ST_REG_VAL };
@@ -323,7 +369,7 @@ static Value emit_identifier(FILE *out, NodeIdx expr, StackFrame frame) {
     // offset of 1 to get to the byte corresponding to 'a', rather than the 'f' garbage...
     const int type_weirdness_offset = var->type == U8 ? 1 : 0;
 
-    fprintf(out, "\t\tld hl, sp%+d\n", var->offset + frame.stack_offset + type_weirdness_offset);
+    _(out, "ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
     return (Value) { .typeId = var->type, .storage = ST_REG_EA };
 }
 
@@ -344,9 +390,13 @@ static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
             break;
         case EXPR_IDENT:
             return emit_identifier(out, expr, frame);
-        case EXPR_LITERAL:
-            fprintf(out, "\t\tld a, %.*s\n", (int)n->expr.literal.len, n->expr.literal.s);
+        case EXPR_LITERAL_U8:
+            _(out, "ld a, $%x", n->expr.literal_int);
             v = (Value) { .typeId = U8, .storage = ST_REG_VAL };
+            break;
+        case EXPR_LITERAL_U16:
+            _(out, "ld hl, $%x", n->expr.literal_int);
+            v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
             break;
     }
     return v;
@@ -398,7 +448,7 @@ static void emit_fn(FILE *out, NodeIdx fn) {
     emit_value_to_register(out, ret_val, false);
 
     // expect U8 result in 'a' register
-    fprintf(out, "\t\tret\n");
+    _(out, "ret");
 }
 
 static void init() {

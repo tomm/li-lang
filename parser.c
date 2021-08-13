@@ -89,13 +89,23 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
     NodeIdx expr = alloc_node();
 
     switch (t->type) {
-        case T_DECIMAL:
+        case T_LITERAL_U8:
             set_node(expr, &(AstNode) {
                 .start_token = t,
                 .type = AST_EXPR,
                 .expr = {
-                    .type = EXPR_LITERAL,
-                    .literal = t->decimal
+                    .type = EXPR_LITERAL_U8,
+                    .literal_int = t->int_literal
+                }
+            });
+            break;
+        case T_LITERAL_U16:
+            set_node(expr, &(AstNode) {
+                .start_token = t,
+                .type = AST_EXPR,
+                .expr = {
+                    .type = EXPR_LITERAL_U16,
+                    .literal_int = t->int_literal
                 }
             });
             break;
@@ -397,10 +407,11 @@ void print_ast(NodeIdx nidx, int depth) {
                     Str_puts(node->expr.ident, stdout);
                     printf("\n");
                     break;
-                case EXPR_LITERAL:
-                    printf("expr_literal ");
-                    Str_puts(node->expr.literal, stdout);
-                    printf("\n");
+                case EXPR_LITERAL_U8:
+                    printf("literal u8 (%d)\n", node->expr.literal_int);
+                    break;
+                case EXPR_LITERAL_U16:
+                    printf("literal u16 (%d)\n", node->expr.literal_int);
                     break;
                 case EXPR_CALL:
                     printf("expr_call\n");

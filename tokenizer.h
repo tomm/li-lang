@@ -25,7 +25,8 @@ typedef struct Token {
         T_RETURN,
         T_FN,
         T_IDENT,
-        T_DECIMAL,
+        T_LITERAL_U8,
+        T_LITERAL_U16,
         T_RARROW,
         T_EOF
     } type;
@@ -35,7 +36,7 @@ typedef struct Token {
 
     union {
         Str ident;
-        Str decimal;
+        int int_literal;
     };
 } Token;
 

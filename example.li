@@ -19,10 +19,12 @@ fn blah() {
 fn test1(a: u8, b: u8) -> u8 {
   2+b+a-3
 }
-fn test2(a: u16, b: u16) -> u16 {
-  b+a
+fn test2(a: u16, b: u16, c: u16) -> u16 {
+  a + b + c - 0x10f0u16 & 0x33cc | 0xf00f ^ 0x20u16
 }
 fn main() {
-  test1(4,5);
-  //test2(4,5);
+  //test1(4,0xf);
+
+  test2(0x6543, 0x4567, 0x1234)
+  // 0xf3ef in hl
 }
