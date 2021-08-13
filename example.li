@@ -16,10 +16,13 @@ fn blah() {
   test2(_hey_jude())
 }
 */
-fn test1(a: u8, b: u8, c: u16, d: u8) -> u8 {
-  9
+fn test1(a: u8, b: u8) -> u8 {
+  2+b+a-3
+}
+fn test2(a: u16, b: u16) -> u16 {
+  b+a
 }
 fn main() {
-  128;
-  40+10-9&1
+  test1(4,5);
+  //test2(4,5);
 }

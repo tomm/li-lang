@@ -3,6 +3,7 @@
 #include "str.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <assert.h>
 
 static Vec/*<Type>*/ types;
 
@@ -41,6 +42,7 @@ void init_types() {
         .name = { .s = "void", .len = 4 },
         .size = 0,
         .stack_size = 0,
+        .stack_offset = 0,
         .type = TYPE_PRIM
     });
 
@@ -49,6 +51,21 @@ void init_types() {
         .name = { .s = "u8", .len = 2 },
         .size = 1,
         .stack_size = 2,
+        .stack_offset = 1, /* because we used `push af` */
         .type = TYPE_PRIM
     });
+
+    add_type((Type) {
+        /* U16 */
+        .name = { .s = "u16", .len = 3 },
+        .size = 2,
+        .stack_size = 2,
+        .stack_offset = 0,
+        .type = TYPE_PRIM
+    });
+}
+
+bool is_type_eq(TypeId a, TypeId b) {
+    assert(get_type(a)->type == TYPE_PRIM && get_type(b)->type == TYPE_PRIM);
+    return a==b;
 }
