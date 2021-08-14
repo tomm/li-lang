@@ -112,7 +112,7 @@ Vec lex(Str buf) {
                 exit(-1);
             }
             pos += 2;
-            while (isxdigit(*pos)) pos++;
+            while (isxdigit(*pos)) NEXT();
             
             if (*pos == 'u' && LOOK_AHEAD() == '8') {
                 t.type = T_LITERAL_U8;
@@ -133,7 +133,7 @@ Vec lex(Str buf) {
                 fprintf(stderr, "Unknown token at line %d, col %d\n", line, col);
                 exit(-1);
             }
-            while (isdigit(*pos)) pos++;
+            while (isdigit(*pos)) NEXT();
             
             if (*pos == 'u' && LOOK_AHEAD() == '8') {
                 t.type = T_LITERAL_U8;

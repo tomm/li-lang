@@ -165,15 +165,40 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     }
 }
 
-static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
+static NodeIdx parse_cast_expression(TokenCursor *toks) {
     NodeIdx n = parse_postfix_expression(toks);
+
+    while (tok_peek(toks, 0, true)->type == T_AS) {
+        const Token *start_token = chomp(toks, T_AS);
+        const Token *ident = chomp(toks, T_IDENT);
+
+        NodeIdx child = n;
+        n = alloc_node();
+        set_node(n, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = start_token,
+            .expr = {
+                .type = EXPR_CAST,
+                .cast = {
+                    .arg = child,
+                    .to_type = ident->ident
+                }
+            }
+        });
+    }
+
+    return n;
+}
+
+static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
+    NodeIdx n = parse_cast_expression(toks);
 
     while (tok_peek(toks, 0, true)->type == T_ASTERISK) {
         const Token *start_token = chomp(toks, T_ASTERISK);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_postfix_expression(toks));
+        ChildCursor_append(&args, parse_cast_expression(toks));
 
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -429,6 +454,12 @@ void print_ast(NodeIdx nidx, int depth) {
                     for (NodeIdx arg=node->expr.builtin.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
                         print_ast(arg, depth+2);
                     }
+                    break;
+                case EXPR_CAST:
+                    printf("cast (as %.*s)\n",
+                            (int)node->expr.cast.to_type.len,
+                            node->expr.cast.to_type.s);
+                    print_ast(node->expr.cast.arg, depth+2);
                     break;
             }
             break;

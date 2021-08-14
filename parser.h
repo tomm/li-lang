@@ -39,7 +39,8 @@ typedef struct AstNode {
                 EXPR_LITERAL_U8,
                 EXPR_LITERAL_U16,
                 EXPR_CALL,
-                EXPR_BUILTIN
+                EXPR_BUILTIN,
+                EXPR_CAST,
             } type;
 
             union {
@@ -63,6 +64,10 @@ typedef struct AstNode {
                         BUILTIN_MUL
                     } op;
                 } builtin;
+                struct {
+                    NodeIdx arg;
+                    Str to_type;
+                } cast;
             };
         } expr;
     };

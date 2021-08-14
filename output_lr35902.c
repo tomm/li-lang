@@ -308,20 +308,80 @@ static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
     }
 }
 
-static void emit_call_push_args(FILE *out, NodeIdx arg_list_head, StackFrame *frame) {
+static Value emit_cast(FILE *out, NodeIdx cast, StackFrame frame) {
+    AstNode *n = get_node(cast);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
+
+    TypeId to_type = lookup_type(n->expr.cast.to_type);
+    Value v1 = emit_expression(out, n->expr.cast.arg, frame);
+
+    if (v1.typeId == to_type) {
+        // no-op
+    } else if (v1.typeId == U8 && to_type == U16) {
+        v1 = emit_value_to_register(out, v1, false);  // v1 in `a`
+        _(out, "ld h, 0");
+        _(out, "ld l, a");
+    } else if (v1.typeId == U16 && to_type == U8) {
+        v1 = emit_value_to_register(out, v1, false);  // v1 in `hl`
+        _(out, "ld a, l");
+    } else {
+        compile_error(n, "Invalid type cast (from %.*s to %.*s)",
+                (int)get_type(v1.typeId)->name.len,
+                get_type(v1.typeId)->name.s,
+                (int)get_type(to_type)->name.len,
+                get_type(to_type)->name.s);
+    }
+
+    return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+}
+
+static void emit_call_push_args(FILE *out, int arg_num, NodeIdx first_arg_type, NodeIdx arg_list_head, StackFrame *frame) {
     // push last to first
     if (arg_list_head == 0) {
         return;
     }
 
+    // expected arg type from definition
+    AstNode *arg_type = get_node(first_arg_type);
+    assert(arg_type->type == AST_FN_ARG);
+
     AstNode *n = get_node(arg_list_head);
     if (n->next_sibling != 0) {
-        emit_call_push_args(out, n->next_sibling, frame);
+        emit_call_push_args(out, arg_num+1, arg_type->next_sibling, n->next_sibling, frame);
     }
 
     assert(n->type == AST_EXPR);
     Value v = emit_expression(out, arg_list_head, *frame);
     emit_push(out, v, frame);
+
+    const Type *expected = get_type(lookup_type(arg_type->fn_arg.type));
+
+    if (!is_type_eq(v.typeId, lookup_type(arg_type->fn_arg.type))) {
+        compile_error(n, "error passing argument %d: type %.*s does not match expected type %.*s",
+                arg_num + 1,
+                (int)get_type(v.typeId)->name.len,
+                get_type(v.typeId)->name.s,
+                (int)expected->name.len,
+                expected->name.s);
+    }
+}
+
+// includes self
+static int ast_node_sibling_size(NodeIdx n) {
+    if (n == 0) return 0;
+    else return 1 + ast_node_sibling_size(get_node(n)->next_sibling);
+}
+
+static const AstNode *lookup_fn(Str name) {
+    // XXX assumes root of AST is index 0
+    AstNode *mod = get_node(0);
+
+    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
+        AstNode *child = get_node(i);
+        if (child->type != AST_FN) continue;
+        if (Str_eq2(child->fn.name, name)) return child;
+    }
+    return NULL;
 }
 
 static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
@@ -331,15 +391,30 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
+        const AstNode *fn = lookup_fn(callee->expr.ident);
+
+        if (fn == NULL) {
+            compile_error(callee, "call to undefined function '%.*s'",
+                    (int)callee->expr.ident.len, callee->expr.ident.s);
+        }
+        if (ast_node_sibling_size(fn->fn.first_arg) !=
+            ast_node_sibling_size(n->expr.call.first_arg)) {
+            compile_error(callee, "function '%.*s' expected %d arguments but %d given",
+                    (int)callee->expr.ident.len, callee->expr.ident.s,
+                    ast_node_sibling_size(fn->fn.first_arg),
+                    ast_node_sibling_size(n->expr.call.first_arg));
+        }
+
         const int old_stack = frame.stack_offset;
-        emit_call_push_args(out, n->expr.call.first_arg, &frame);
+        emit_call_push_args(out, 0, fn->fn.first_arg, n->expr.call.first_arg, &frame);
         // XXX does not check function exists, or check argument types!
         _(out, "call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
         const int stack_correction = frame.stack_offset - old_stack;
-        _(out, "add sp, %d", stack_correction);
+        if (stack_correction) {
+            _(out, "add sp, %d", stack_correction);
+        }
         frame.stack_offset += stack_correction;
-        // XXX GET CALL RETURN TYPE??
-        return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+        return (Value) { .typeId = lookup_type(fn->fn.ret), .storage = ST_REG_VAL };
     } else {
         compile_error(callee, "fn call by expression not implemented");
     }
@@ -398,6 +473,8 @@ static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
             _(out, "ld hl, $%x", n->expr.literal_int);
             v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
             break;
+        case EXPR_CAST:
+            return emit_cast(out, expr, frame);
     }
     return v;
 }
@@ -411,7 +488,7 @@ static TypeId find_type(AstNode *n, Str typename) {
     return id;
 }
 
-static void emit_fn(FILE *out, NodeIdx fn) {
+static Value emit_fn(FILE *out, NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
     assert(fn_node->type == AST_FN);
 
@@ -444,11 +521,21 @@ static void emit_fn(FILE *out, NodeIdx fn) {
     StackFrame frame = { .num_vars = _stack_vars.len, .stack_offset = 0 };
     
     Value ret_val = emit_expression(out, fn_node->fn.body, frame);
-
     emit_value_to_register(out, ret_val, false);
-
-    // expect U8 result in 'a' register
     _(out, "ret");
+
+    TypeId expected_ret = lookup_type(fn_node->fn.ret);
+    if (!is_type_eq(expected_ret, ret_val.typeId)) {
+        compile_error(fn_node, "function %.*s returned %.*s but should return %.*s",
+                (int)fn_node->fn.name.len,
+                fn_node->fn.name.s,
+                (int)get_type(ret_val.typeId)->name.len,
+                get_type(ret_val.typeId)->name.s,
+                (int)get_type(expected_ret)->name.len,
+                get_type(expected_ret)->name.s);
+    }
+
+    return ret_val;
 }
 
 static void init() {
