@@ -1,21 +1,3 @@
-/*fn test1() {}
-fn test2 (
-  hello: u8,
-  blah: u16
-) {
-}
-
-fn test3(a: bool, b: bool,) -> u16
-{
-}
-
-fn _hey_jude(x: u32) { x*2+3*4*5+8}
-
-fn blah() {
-  test1(1,2,3);
-  test2(_hey_jude())
-}
-*/
 fn test1(a: u8, b: u8) -> u8 {
   2+b+a-3
 }

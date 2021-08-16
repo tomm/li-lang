@@ -7,6 +7,27 @@
 #include "tokenizer.h"
 #include "types.h"
 
+static void compile_error(const AstNode *at, const char *format, ...) __attribute__((format(printf, 2, 3)));
+static void compile_error(const AstNode *at, const char *format, ...) {
+	char buf[1024];
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+    fprintf(stderr, "%d:%d: %s\n",
+            at->start_token->line, at->start_token->col, buf);
+    exit(-1);
+}
+
+static TypeId find_type(const AstNode *n, Str typename) {
+    printf("Looking up type %.*s\n", (int)typename.len, typename.s);
+    TypeId id = lookup_type(typename);
+    if (id == -1) {
+        compile_error(n, "Unknown type %.*s", (int)typename.len, typename.s);
+    }
+    return id;
+}
+
 static void emit_boilerplate(FILE *out) {
     fputs(
 "SECTION \"Header\", ROM0[$100]\n"
@@ -59,18 +80,6 @@ static StackVarIdx alloc_var() {
     StackVarIdx idx = _stack_vars.len;
     vec_push(&_stack_vars, &v);
     return idx;
-}
-
-static void compile_error(const AstNode *at, const char *format, ...) __attribute__((format(printf, 2, 3)));
-static void compile_error(const AstNode *at, const char *format, ...) {
-	char buf[1024];
-	va_list ap;
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), format, ap);
-	va_end(ap);
-    fprintf(stderr, "%d:%d: %s\n",
-            at->start_token->line, at->start_token->col, buf);
-    exit(-1);
 }
 
 /* opcode output */
@@ -312,7 +321,7 @@ static Value emit_cast(FILE *out, NodeIdx cast, StackFrame frame) {
     AstNode *n = get_node(cast);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
 
-    TypeId to_type = lookup_type(n->expr.cast.to_type);
+    TypeId to_type = find_type(n, n->expr.cast.to_type);
     Value v1 = emit_expression(out, n->expr.cast.arg, frame);
 
     if (v1.typeId == to_type) {
@@ -354,9 +363,9 @@ static void emit_call_push_args(FILE *out, int arg_num, NodeIdx first_arg_type, 
     Value v = emit_expression(out, arg_list_head, *frame);
     emit_push(out, v, frame);
 
-    const Type *expected = get_type(lookup_type(arg_type->fn_arg.type));
+    const Type *expected = get_type(find_type(n, arg_type->fn_arg.type));
 
-    if (!is_type_eq(v.typeId, lookup_type(arg_type->fn_arg.type))) {
+    if (!is_type_eq(v.typeId, find_type(n, arg_type->fn_arg.type))) {
         compile_error(n, "error passing argument %d: type %.*s does not match expected type %.*s",
                 arg_num + 1,
                 (int)get_type(v.typeId)->name.len,
@@ -414,7 +423,7 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
             _(out, "add sp, %d", stack_correction);
         }
         frame.stack_offset += stack_correction;
-        return (Value) { .typeId = lookup_type(fn->fn.ret), .storage = ST_REG_VAL };
+        return (Value) { .typeId = find_type(fn, fn->fn.ret), .storage = ST_REG_VAL };
     } else {
         compile_error(callee, "fn call by expression not implemented");
     }
@@ -479,15 +488,6 @@ static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
     return v;
 }
 
-static TypeId find_type(AstNode *n, Str typename) {
-    printf("Looking up type %.*s\n", (int)typename.len, typename.s);
-    TypeId id = lookup_type(typename);
-    if (id == -1) {
-        compile_error(n, "Unknown type %.*s", (int)typename.len, typename.s);
-    }
-    return id;
-}
-
 static Value emit_fn(FILE *out, NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
     assert(fn_node->type == AST_FN);
@@ -524,7 +524,7 @@ static Value emit_fn(FILE *out, NodeIdx fn) {
     emit_value_to_register(out, ret_val, false);
     _(out, "ret");
 
-    TypeId expected_ret = lookup_type(fn_node->fn.ret);
+    TypeId expected_ret = find_type(fn_node, fn_node->fn.ret);
     if (!is_type_eq(expected_ret, ret_val.typeId)) {
         compile_error(fn_node, "function %.*s returned %.*s but should return %.*s",
                 (int)fn_node->fn.name.len,
