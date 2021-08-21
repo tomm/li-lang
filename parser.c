@@ -267,6 +267,35 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
     return n;
 }
 
+static NodeIdx parse_comparison_expression(TokenCursor *toks) {
+    NodeIdx n = parse_additive_expression(toks);
+
+    while (tok_peek(toks, 0, true)->type == T_EQ ||
+           tok_peek(toks, 0, true)->type == T_NEQ
+    ) {
+        const Token *t = tok_next(toks, true);
+
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, n);
+        ChildCursor_append(&args, parse_additive_expression(toks));
+        
+        n = alloc_node();
+        set_node(n, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = t->type == T_EQ ? BUILTIN_EQ : BUILTIN_NEQ,
+                    .first_arg = args.first_child
+                }
+            }
+        });
+    }
+
+    return n;
+}
+
 static NodeIdx parse_conditional_expression(TokenCursor *toks) {
     if (tok_peek(toks, 0, true)->type == T_IF) {
         const Token *t = chomp(toks, T_IF);
@@ -300,7 +329,7 @@ static NodeIdx parse_conditional_expression(TokenCursor *toks) {
 
         return if_else;
     } else {
-        return parse_additive_expression(toks);
+        return parse_comparison_expression(toks);
     }
 }
 

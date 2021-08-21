@@ -8,6 +8,7 @@
 #include "types.h"
 
 static FILE *output;
+static int _local_label_seq = 0;
 
 static void compile_error(const AstNode *at, const char *format, ...) __attribute__((format(printf, 2, 3)));
 static void compile_error(const AstNode *at, const char *format, ...) {
@@ -314,6 +315,21 @@ static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
         case BUILTIN_MUL:
             _i("call __mulu8");
             break;
+        case BUILTIN_EQ:
+            {
+                const int l = _local_label_seq++;
+                _i("cp a, b");
+                _i("ld a, 0"); // clear without affecting flags
+                _i("jr nz, .l%d", l);
+                _i("dec a");
+                _label(l);
+            }
+            break;
+        case BUILTIN_NEQ:
+            {
+                _i("sub a, b");
+            }
+            break;
         default:
             assert(false);
             break;
@@ -382,6 +398,35 @@ static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
         case BUILTIN_MUL:
             _i("call __mulu16");
             break;
+        case BUILTIN_EQ:
+            {
+                const int l = _local_label_seq++;
+                _i("ld a, l");
+                _i("sub a, e");
+                _i("ld l, a");
+
+                _i("ld a, h");
+                _i("sbc a, d");
+                _i("or a, l");
+
+                _i("ld a, 0"); // not affecting flags
+
+                _i("jr nz, .l%d", l);
+                _i("dec a");
+                _label(l);
+            }
+            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+        case BUILTIN_NEQ:
+            {
+                _i("ld a, l");
+                _i("sub a, e");
+                _i("ld l, a");
+
+                _i("ld a, h");
+                _i("sbc a, d");
+                _i("or a, l");
+            }
+            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
         default:
             assert(false);
             break;
@@ -570,8 +615,6 @@ static TypeId find_type2(NodeIdx typename_) {
     return find_type(get_node(typename_), get_node(typename_)->typename_.name);
 }
 
-static int _local_label_seq = 0;
-
 static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IF_ELSE);
@@ -752,7 +795,7 @@ static Value emit_fn(NodeIdx fn) {
 }
 
 static void emit_ram_globals() {
-    __("\nSECTION \"workram\", WRAM0\n");
+    __("\nSECTION \"workram\", WRAM0");
     
     for (int i=0; i<_ram_vars.len; ++i) {
         RamVariable v = *(RamVariable*) vec_get(&_ram_vars, i);

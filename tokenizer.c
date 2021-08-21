@@ -19,6 +19,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_FN: return "fn";
         case T_VAR: return "var";
         case T_ASSIGN: return "=";
+        case T_EQ: return "==";
+        case T_NEQ: return "!=";
         case T_GT: return ">";
         case T_AS: return "as";
         case T_RETURN: return "return";
@@ -56,14 +58,14 @@ Vec lex(Str buf) {
         else if (*pos == ')') { EMIT(((Token) { T_RPAREN, line, col })); NEXT(); }
         else if (*pos == ';') { EMIT(((Token) { T_SEMICOLON, line, col })); NEXT(); }
         else if (*pos == ':') { EMIT(((Token) { T_COLON, line, col })); NEXT(); }
-        else if ((*pos == '-') && LOOK_AHEAD() == '>') {
-            EMIT(((Token) { T_RARROW, line, col })); NEXT(); NEXT();
-        }
+        else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col })); NEXT(); NEXT(); }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col })); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col })); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_BITAND, line, col })); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_BITOR, line, col })); NEXT(); }
         else if (*pos == '^') { EMIT(((Token) { T_BITXOR, line, col })); NEXT(); }
+        else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col })); NEXT(); NEXT(); }
+        else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col })); NEXT(); NEXT(); }
         else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col })); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col })); NEXT(); }

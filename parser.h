@@ -80,7 +80,9 @@ typedef struct AstNode {
                         BUILTIN_BITOR,
                         BUILTIN_BITXOR,
                         BUILTIN_MUL,
-                        BUILTIN_ASSIGN
+                        BUILTIN_ASSIGN,
+                        BUILTIN_EQ,
+                        BUILTIN_NEQ,
                     } op;
                 } builtin;
                 struct {
