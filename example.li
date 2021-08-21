@@ -54,6 +54,12 @@ fn main() -> void {
         pass()
     };
 
+    // test multiply
+    if 5*5 - 25 { fail_() } else { pass() };
+    if 255*255 - 1 { fail_() } else { pass() };
+    if 255u16*255u16 - 0xfe01 { fail_() } else { pass() };
+    if 123u16*100u16 - 12300 { fail_() } else { pass() };
+
     test_u16_global();
 
     output_results();
@@ -62,10 +68,9 @@ fn main() -> void {
 /* Show passed tests in reg 'a', failed tests in 'b' */
 fn output_results() {
     asm("
-        ld hl, passes
-        ld a, [hl]
-        ld hl, fails
-        ld b, [hl]
-        db $dd
-    ");
+         ld hl, passes
+         ld a, [hl]
+         ld hl, fails
+         ld b, [hl]
+         db $dd");
 }

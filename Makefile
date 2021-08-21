@@ -13,7 +13,6 @@ clean:
 
 example:
 	./lic example.li
-	cat out.asm
 	rgbasm out.asm -o example.o
 	rgblink -o example.gb example.o
 	rgbfix -v -p 0 example.gb

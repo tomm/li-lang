@@ -7,6 +7,8 @@
 #include "tokenizer.h"
 #include "types.h"
 
+static FILE *output;
+
 static void compile_error(const AstNode *at, const char *format, ...) __attribute__((format(printf, 2, 3)));
 static void compile_error(const AstNode *at, const char *format, ...) {
 	char buf[1024];
@@ -28,24 +30,85 @@ static TypeId find_type(const AstNode *n, Str typename) {
     return id;
 }
 
-static void emit_boilerplate(FILE *out) {
-    fputs(
-"SECTION \"Header\", ROM0[$100]\n"
-"\t\tdi\n"
-"\t\tjp __start\n"
-"\t\t; Space for cartridge headers\n"
-"\t\tREPT $150 - $104\n"
-"\t\t\tdb 0\n"
-"\t\tENDR\n"
-"\n"
-"SECTION \"Code\", ROM0[$150]\n"
-"__start:\n"
-"\t\tcall main\n"
-"\t.loop\n"
-"\t\thalt\n"
-"\t\tnop\n"
-"\t\tjr .loop\n"
-    , out);
+static void __(const char *format, ...) __attribute__((format(printf, 1, 2)));
+static void __(const char *format, ...) {
+	char buf[256];
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+    fputs(buf, output);
+    fputs("\n", output);
+}
+
+/* opcode output */
+static void _i(const char *format, ...) __attribute__((format(printf, 1, 2)));
+static void _i(const char *format, ...) {
+	char buf[256];
+	va_list ap;
+	va_start(ap, format);
+	vsnprintf(buf, sizeof(buf), format, ap);
+	va_end(ap);
+    fputs("        ", output);
+    __("%s", buf);
+}
+
+static void _label(int label_num) {
+    fputs("    ", output);
+    __(".l%d:", label_num);
+}
+
+static void emit_boilerplate() {
+    __("SECTION \"Header\", ROM0[$100]");
+    __("        nop");
+    __("        jp __start");
+    __("        ; Space for cartridge headers");
+    __("        REPT $150 - $104");
+    __("        db 0");
+    __("        ENDR");
+
+    __("SECTION \"Code\", ROM0[$150]");
+    __("__start:");
+    __("        di");
+    __("        ld sp, $e000 ; top of WRAM");
+    __("        call main");
+    __("    .loop");
+    __("        halt");
+    __("        nop");
+    __("        jr .loop");
+
+    __("; 248 cycles");
+    __("__mulu8:");
+    __("    ; a = a*b");
+    __("        ld c, a");
+    __("        xor a, a");
+    __("    REPT 8");
+    __("        srl b");
+    __("        jr nc, .no\\@");
+    __("        add a, c");
+    __("    .no\\@");
+    __("        sla c");
+    __("    ENDR");
+    __("        ret");
+
+    __("; 700 cycles");
+    __("__mulu16:");
+    __("    ; hl = hl*de");
+    __("        ld b, h");
+    __("        ld c, l");
+    __("        xor a");
+    __("        ld h, a");
+    __("        ld l, a");
+    __("    REPT 16");
+    __("        srl b");
+    __("        rr c");
+    __("        jr nc, .no\\@");
+    __("        add hl, de");
+    __("    .no\\@");
+    __("        sla e");
+    __("        rl d");
+    __("    ENDR");
+    __("        ret");
 }
 
 /*         ST_REG_EA ST_REG_VAL ST_REG_VAL_AUX
@@ -94,28 +157,11 @@ static StackVarIdx alloc_var() {
     return idx;
 }
 
-/* opcode output */
-static void _(FILE *f, const char *format, ...) __attribute__((format(printf, 2, 3)));
-static void _(FILE *f, const char *format, ...) {
-	char buf[256];
-	va_list ap;
-	va_start(ap, format);
-	vsnprintf(buf, sizeof(buf), format, ap);
-	va_end(ap);
-    fputs("\t\t", f);
-    fputs(buf, f);
-    fputs("\n", f);
-}
-
-static void _label(FILE *f, int label_num) {
-    fprintf(f, "\t.l%d:\n", label_num);
-}
-
 static StackVar *get_stack_var(StackVarIdx idx) {
     return vec_get(&_stack_vars, idx);
 }
 
-static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
+static Value emit_value_to_register(Value v, bool to_aux_reg) {
     const enum Storage st = to_aux_reg ? ST_REG_VAL_AUX : ST_REG_VAL;
 
     if (v.typeId == VOID) {
@@ -125,16 +171,16 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
     else if (v.typeId == U8) {
         switch (v.storage) {
             case ST_REG_EA:
-                _(out, "ld %s, [hl]", to_aux_reg ? "b" : "a");
+                _i("ld %s, [hl]", to_aux_reg ? "b" : "a");
                 return (Value) { .typeId = U8, .storage = st };
             case ST_REG_VAL:
                 if (st != v.storage) {
-                    _(out, "ld b, a");
+                    _i("ld b, a");
                 }
                 return (Value) { .typeId = U8, .storage = st };
             case ST_REG_VAL_AUX:
                 if (st != v.storage) {
-                    _(out, "ld a, b");
+                    _i("ld a, b");
                 }
                 return (Value) { .typeId = U8, .storage = st };
         }
@@ -143,19 +189,19 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
     else if (v.typeId == U16) {
         switch (v.storage) {
             case ST_REG_EA:
-                _(out, "ld a, [hl+]");
-                _(out, "ld %s, [hl]", to_aux_reg ? "d" : "h");
-                _(out, "ld %s, a", to_aux_reg ? "e" : "l");
+                _i("ld a, [hl+]");
+                _i("ld %s, [hl]", to_aux_reg ? "d" : "h");
+                _i("ld %s, a", to_aux_reg ? "e" : "l");
                 return (Value) { .typeId = U16, .storage = st };
             case ST_REG_VAL:
                 if (st != v.storage) {
-                    _(out, "ld d, h");
-                    _(out, "ld e, l");
+                    _i("ld d, h");
+                    _i("ld e, l");
                 }
                 return (Value) { .typeId = U16, .storage = st };
             case ST_REG_VAL_AUX:
                 if (st != v.storage) {
-                    _(out, "ld hl, de");
+                    _i("ld hl, de");
                 }
                 return (Value) { .typeId = U16, .storage = st };
         }
@@ -164,7 +210,7 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
     assert(false);
 }
 
-static void emit_push(FILE *out, AstNode *n, Value v, StackFrame *frame) {
+static void emit_push(AstNode *n, Value v, StackFrame *frame) {
     if (v.typeId == VOID) {
         compile_error(n, "can not use a void value");
         return;
@@ -173,11 +219,11 @@ static void emit_push(FILE *out, AstNode *n, Value v, StackFrame *frame) {
         case ST_REG_VAL:
             switch (v.typeId) {
                 case U8:
-                    _(out, "push af");
+                    _i("push af");
                     frame->stack_offset += 2;
                     return;
                 case U16:
-                    _(out, "push hl");
+                    _i("push hl");
                     frame->stack_offset += 2;
                     return;
                 default: assert(false);
@@ -185,11 +231,11 @@ static void emit_push(FILE *out, AstNode *n, Value v, StackFrame *frame) {
         case ST_REG_EA:
             switch (v.typeId) {
                 case U8:
-                    _(out, "push hl");
+                    _i("push hl");
                     frame->stack_offset += 2;
                     return;
                 case U16:
-                    _(out, "push hl");
+                    _i("push hl");
                     frame->stack_offset += 2;
                     return;
                 default: assert(false);
@@ -197,7 +243,7 @@ static void emit_push(FILE *out, AstNode *n, Value v, StackFrame *frame) {
     }
 }
 
-static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
+static Value emit_pop(Value v, StackFrame *frame, bool to_aux_reg) {
     const enum Storage st = to_aux_reg ? ST_REG_VAL_AUX : ST_REG_VAL;
 
     switch (v.storage) {
@@ -207,11 +253,11 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    _(out, "pop %s", to_aux_reg ? "bc" : "af");
+                    _i("pop %s", to_aux_reg ? "bc" : "af");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = st, .typeId = U8 };
                 case U16:
-                    _(out, "pop %s", to_aux_reg ? "de" : "hl");
+                    _i("pop %s", to_aux_reg ? "de" : "hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = st, .typeId = U16 };
                 default: assert(false);
@@ -220,50 +266,53 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
             switch (v.typeId) {
                 case VOID: assert(false);
                 case U8:
-                    _(out, "pop hl");
+                    _i("pop hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = ST_REG_EA, .typeId = U8 };
                 case U16:
-                    _(out, "pop hl");
+                    _i("pop hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = ST_REG_EA, .typeId = U16 };
                 default: assert(false);
             }
     }
 }
-static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
+static Value emit_expression(NodeIdx expr, StackFrame frame);
 
-static Value emit_builtin_u8(FILE *out, NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
     // v1 on stack, v2 as tmp (active Value)
-    v2 = emit_value_to_register(out, v2, true);   // v2 in `b`
-    v1 = emit_pop(out, v1, frame, false);
+    v2 = emit_value_to_register(v2, true);   // v2 in `b`
+    v1 = emit_pop(v1, frame, false);
 
     if (op == BUILTIN_ASSIGN) {
         if (v1.storage != ST_REG_EA) {
             compile_error(get_node(expr), "Can not assign to temporary");
         }
-        _(out, "ld [hl], b");
+        _i("ld [hl], b");
         return (Value) { .typeId = U8, .storage = ST_REG_EA };
     }
 
-    v1 = emit_value_to_register(out, v1, false);  // v1 in `a`
+    v1 = emit_value_to_register(v1, false);  // v1 in `a`
 
     // assumes binary op
     switch (op) {
         case BUILTIN_ADD:
-            _(out, "add a, b");
+            _i("add a, b");
             break;
         case BUILTIN_SUB:
-            _(out, "sub a, b");
+            _i("sub a, b");
             break;
         case BUILTIN_BITOR:
-            _(out, "or a, b");
+            _i("or a, b");
             break;
         case BUILTIN_BITAND:
-            _(out, "and a, b");
+            _i("and a, b");
             break;
         case BUILTIN_BITXOR:
-            _(out, "xor a, b");
+            _i("xor a, b");
+            break;
+        case BUILTIN_MUL:
+            _i("call __mulu8");
             break;
         default:
             assert(false);
@@ -272,63 +321,66 @@ static Value emit_builtin_u8(FILE *out, NodeIdx expr, StackFrame *frame, enum Bu
     return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin_u16(FILE *out, NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
     // v1 on stack, v2 as tmp (active Value)
-    v2 = emit_value_to_register(out, v2, true);   // v2 in `de`
-    v1 = emit_pop(out, v1, frame, false);
+    v2 = emit_value_to_register(v2, true);   // v2 in `de`
+    v1 = emit_pop(v1, frame, false);
 
     if (op == BUILTIN_ASSIGN) {
         if (v1.storage != ST_REG_EA) {
             compile_error(get_node(expr), "Can not assign to temporary");
         }
-        _(out, "ld a, e");
-        _(out, "ld [hl+], a");
-        _(out, "ld a, d");
-        _(out, "ld [hl-], a");
+        _i("ld a, e");
+        _i("ld [hl+], a");
+        _i("ld a, d");
+        _i("ld [hl-], a");
         return (Value) { .typeId = U16, .storage = ST_REG_EA };
     }
 
-    v1 = emit_value_to_register(out, v1, false);  // v1 in `hl`
+    v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
         case BUILTIN_ADD:
-            _(out, "add hl, de");
+            _i("add hl, de");
             break;
         case BUILTIN_SUB:
-            _(out, "ld a, l");
-            _(out, "sub a, e");
-            _(out, "ld l, a");
+            _i("ld a, l");
+            _i("sub a, e");
+            _i("ld l, a");
 
-            _(out, "ld a, h");
-            _(out, "sbc a, d");
-            _(out, "ld h, a");
+            _i("ld a, h");
+            _i("sbc a, d");
+            _i("ld h, a");
             break;
         case BUILTIN_BITOR:
-            _(out, "ld a, h");
-            _(out, "or a, d");
-            _(out, "ld h, a");
+            _i("ld a, h");
+            _i("or a, d");
+            _i("ld h, a");
 
-            _(out, "ld a, l");
-            _(out, "or a, e");
-            _(out, "ld l, a");
+            _i("ld a, l");
+            _i("or a, e");
+            _i("ld l, a");
             break;
         case BUILTIN_BITAND:
-            _(out, "ld a, h");
-            _(out, "and a, d");
-            _(out, "ld h, a");
+            _i("ld a, h");
+            _i("and a, d");
+            _i("ld h, a");
 
-            _(out, "ld a, l");
-            _(out, "and a, e");
-            _(out, "ld l, a");
+            _i("ld a, l");
+            _i("and a, e");
+            _i("ld l, a");
             break;
         case BUILTIN_BITXOR:
-            _(out, "ld a, h");
-            _(out, "xor a, d");
-            _(out, "ld h, a");
+            _i("ld a, h");
+            _i("xor a, d");
+            _i("ld h, a");
 
-            _(out, "ld a, l");
-            _(out, "xor a, e");
-            _(out, "ld l, a");
+            _i("ld a, l");
+            _i("xor a, e");
+            _i("ld l, a");
+            break;
+        case BUILTIN_MUL:
+            _i("call __mulu16");
             break;
         default:
             assert(false);
@@ -337,49 +389,49 @@ static Value emit_builtin_u16(FILE *out, NodeIdx expr, StackFrame *frame, enum B
     return (Value) { .typeId = U16, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
+static Value emit_builtin(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
 
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
     assert(arg1->next_sibling != 0);
 
-    Value v1 = emit_expression(out, n->expr.builtin.first_arg, frame);
-    emit_push(out, arg1, v1, &frame);
-    Value v2 = emit_expression(out, arg1->next_sibling, frame);
+    Value v1 = emit_expression(n->expr.builtin.first_arg, frame);
+    emit_push(arg1, v1, &frame);
+    Value v2 = emit_expression(arg1->next_sibling, frame);
 
     if (!is_type_eq(v2.typeId, v1.typeId)) {
         compile_error(n, "builtin operator expects same types. found %.*s and %.*s",
-                get_type(v2.typeId)->name.len,
+                (int)get_type(v2.typeId)->name.len,
                 get_type(v2.typeId)->name.s,
-                get_type(v1.typeId)->name.len,
+                (int)get_type(v1.typeId)->name.len,
                 get_type(v1.typeId)->name.s);
     }
 
 
     switch (v2.typeId) {
-        case U8: return emit_builtin_u8(out, call, &frame, n->expr.builtin.op, v1, v2);
-        case U16: return emit_builtin_u16(out, call, &frame, n->expr.builtin.op, v1, v2);
+        case U8: return emit_builtin_u8(call, &frame, n->expr.builtin.op, v1, v2);
+        case U16: return emit_builtin_u16(call, &frame, n->expr.builtin.op, v1, v2);
         default: assert(false);
     }
 }
 
-static Value emit_cast(FILE *out, NodeIdx cast, StackFrame frame) {
+static Value emit_cast(NodeIdx cast, StackFrame frame) {
     AstNode *n = get_node(cast);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
 
     TypeId to_type = find_type(n, n->expr.cast.to_type);
-    Value v1 = emit_expression(out, n->expr.cast.arg, frame);
+    Value v1 = emit_expression(n->expr.cast.arg, frame);
 
     if (v1.typeId == to_type) {
         // no-op
     } else if (v1.typeId == U8 && to_type == U16) {
-        v1 = emit_value_to_register(out, v1, false);  // v1 in `a`
-        _(out, "ld h, 0");
-        _(out, "ld l, a");
+        v1 = emit_value_to_register(v1, false);  // v1 in `a`
+        _i("ld h, 0");
+        _i("ld l, a");
     } else if (v1.typeId == U16 && to_type == U8) {
-        v1 = emit_value_to_register(out, v1, false);  // v1 in `hl`
-        _(out, "ld a, l");
+        v1 = emit_value_to_register(v1, false);  // v1 in `hl`
+        _i("ld a, l");
     } else {
         compile_error(n, "Invalid type cast (from %.*s to %.*s)",
                 (int)get_type(v1.typeId)->name.len,
@@ -391,7 +443,7 @@ static Value emit_cast(FILE *out, NodeIdx cast, StackFrame frame) {
     return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
 }
 
-static void emit_call_push_args(FILE *out, int arg_num, NodeIdx first_arg_type, NodeIdx arg_list_head, StackFrame *frame) {
+static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg_list_head, StackFrame *frame) {
     // push last to first
     if (arg_list_head == 0) {
         return;
@@ -403,12 +455,12 @@ static void emit_call_push_args(FILE *out, int arg_num, NodeIdx first_arg_type, 
 
     AstNode *n = get_node(arg_list_head);
     if (n->next_sibling != 0) {
-        emit_call_push_args(out, arg_num+1, arg_type->next_sibling, n->next_sibling, frame);
+        emit_call_push_args(arg_num+1, arg_type->next_sibling, n->next_sibling, frame);
     }
 
     assert(n->type == AST_EXPR);
-    Value v = emit_expression(out, arg_list_head, *frame);
-    emit_push(out, n, v, frame);
+    Value v = emit_expression(arg_list_head, *frame);
+    emit_push(n, v, frame);
 
     const Type *expected = get_type(find_type(n, arg_type->fn_arg.type));
 
@@ -440,7 +492,7 @@ static const AstNode *lookup_fn(Str name) {
     return NULL;
 }
 
-static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
+static Value emit_call(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
 
@@ -450,14 +502,13 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
         if (Str_eq(callee->expr.ident, "asm")) {
             // emit literal asm
             AstNode *arg = get_node(n->expr.call.first_arg);
-            printf("%d %d\n", arg->type, arg->expr.type);
             if (arg->type != AST_EXPR || arg->expr.type != EXPR_LITERAL_STR) {
                 compile_error(callee, "asm() expects string literal argument");
             }
             if (arg->next_sibling != 0) {
                 compile_error(callee, "asm() takes only one argument");
             }
-            fprintf(out, "%.*s", (int)arg->expr.literal_str.len, arg->expr.literal_str.s);
+            fprintf(output, "\n%.*s\n", (int)arg->expr.literal_str.len, arg->expr.literal_str.s);
             return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         }
 
@@ -476,12 +527,12 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
         }
 
         const int old_stack = frame.stack_offset;
-        emit_call_push_args(out, 0, fn->fn.first_arg, n->expr.call.first_arg, &frame);
+        emit_call_push_args(0, fn->fn.first_arg, n->expr.call.first_arg, &frame);
         // XXX does not check function exists, or check argument types!
-        _(out, "call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
+        _i("call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
         const int stack_correction = frame.stack_offset - old_stack;
         if (stack_correction) {
-            _(out, "add sp, %d", stack_correction);
+            _i("add sp, %d", stack_correction);
         }
         frame.stack_offset += stack_correction;
         return (Value) { .typeId = find_type(fn, fn->fn.ret), .storage = ST_REG_VAL };
@@ -521,25 +572,25 @@ static TypeId find_type2(NodeIdx typename_) {
 
 static int _local_label_seq = 0;
 
-static Value emit_if_else(FILE *out, NodeIdx expr, StackFrame frame) {
+static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IF_ELSE);
 
-    Value condition = emit_expression(out, n->expr.if_else.condition, frame);
+    Value condition = emit_expression(n->expr.if_else.condition, frame);
 
     const int else_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
 
     if (condition.typeId == U8) {
-        condition = emit_value_to_register(out, condition, false);  // to 'a' register
-        _(out, "and a, a");
-        _(out, "jp z, .l%d", else_label);
+        condition = emit_value_to_register(condition, false);  // to 'a' register
+        _i("and a, a");
+        _i("jp z, .l%d", else_label);
     }
     else if (condition.typeId == U16) {
-        condition = emit_value_to_register(out, condition, false);  // to 'hl' register
-        _(out, "ld a, l");
-        _(out, "or a, h");
-        _(out, "jp z, .l%d", else_label);
+        condition = emit_value_to_register(condition, false);  // to 'hl' register
+        _i("ld a, l");
+        _i("or a, h");
+        _i("jp z, .l%d", else_label);
     } else {
         compile_error(n, "Invalid condition type in if expression. Expected u8 or u16, but found %.*s",
                 (int)get_type(condition.typeId)->name.len,
@@ -547,13 +598,13 @@ static Value emit_if_else(FILE *out, NodeIdx expr, StackFrame frame) {
         return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
     }
 
-    Value on_true = emit_expression(out, n->expr.if_else.on_true, frame);
+    Value on_true = emit_expression(n->expr.if_else.on_true, frame);
 
     if (n->expr.if_else.on_false != 0) {
-        _(out, "jp .l%d", end_label);
-        _label(out, else_label);
+        _i("jp .l%d", end_label);
+        _label(else_label);
 
-        Value on_false = emit_expression(out, n->expr.if_else.on_false, frame);
+        Value on_false = emit_expression(n->expr.if_else.on_false, frame);
 
         if (!is_type_eq(on_false.typeId, on_true.typeId)) {
             compile_error(n, "if-else expects both branches to evaluate to the same type. found %.*s and %.*s",
@@ -563,18 +614,18 @@ static Value emit_if_else(FILE *out, NodeIdx expr, StackFrame frame) {
                     get_type(on_false.typeId)->name.s);
         }
 
-        _label(out, end_label);
+        _label(end_label);
         // the storage class must be the same
         if (on_false.storage != on_true.storage) {
             compile_error(n, "storage class of if branches differs. THIS CODE IS UNFINISHED. giving up");
         }
     } else {
-        _label(out, else_label);
+        _label(else_label);
     }
     return on_true;
 }
 
-static Value emit_identifier(FILE *out, NodeIdx expr, StackFrame frame) {
+static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IDENT);
 
@@ -585,7 +636,7 @@ static Value emit_identifier(FILE *out, NodeIdx expr, StackFrame frame) {
         // offset of 1 to get to the byte corresponding to 'a', rather than the 'f' garbage...
         const int type_weirdness_offset = var->type == U8 ? 1 : 0;
 
-        _(out, "ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
+        _i("ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
         return (Value) { .typeId = var->type, .storage = ST_REG_EA };
     }
 
@@ -593,36 +644,36 @@ static Value emit_identifier(FILE *out, NodeIdx expr, StackFrame frame) {
 
     if (global) {
         assert(global->type == AST_DEF_VAR);
-        _(out, "ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
+        _i("ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
         return (Value) { .typeId = find_type2(global->var_def.typename_), .storage = ST_REG_EA };
     }
 
     compile_error(n, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
 }
 
-static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
+static Value emit_expression(NodeIdx expr, StackFrame frame) {
     Value v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR);
 
     switch (n->expr.type) {
         case EXPR_BUILTIN:
-            return emit_builtin(out, expr, frame);
+            return emit_builtin(expr, frame);
         case EXPR_CALL:
-            return emit_call(out, expr, frame);
+            return emit_call(expr, frame);
         case EXPR_LIST:
             for (NodeIdx e=n->expr.list.first_child; e != 0; e=get_node(e)->next_sibling) {
-                v = emit_expression(out, e, frame);
+                v = emit_expression(e, frame);
             }
             break;
         case EXPR_IDENT:
-            return emit_identifier(out, expr, frame);
+            return emit_identifier(expr, frame);
         case EXPR_LITERAL_U8:
-            _(out, "ld a, $%x", n->expr.literal_int);
+            _i("ld a, $%x", n->expr.literal_int);
             v = (Value) { .typeId = U8, .storage = ST_REG_VAL };
             break;
         case EXPR_LITERAL_U16:
-            _(out, "ld hl, $%x", n->expr.literal_int);
+            _i("ld hl, $%x", n->expr.literal_int);
             v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
             break;
         case EXPR_LITERAL_VOID:
@@ -630,9 +681,9 @@ static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
             v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
             break;
         case EXPR_CAST:
-            return emit_cast(out, expr, frame);
+            return emit_cast(expr, frame);
         case EXPR_IF_ELSE:
-            return emit_if_else(out, expr, frame);
+            return emit_if_else(expr, frame);
         default:
             assert(false);
     }
@@ -651,12 +702,11 @@ static void record_def_var(NodeIdx def_var) {
     });
 }
 
-static Value emit_fn(FILE *out, NodeIdx fn) {
+static Value emit_fn(NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
     assert(fn_node->type == AST_FN);
 
-    Str_puts(fn_node->fn.name, out);
-    fputs(":\n", out);
+    __("%.*s:", (int)fn_node->fn.name.len, fn_node->fn.name.s);
 
     vec_zero(&_stack_vars);
 
@@ -683,9 +733,9 @@ static Value emit_fn(FILE *out, NodeIdx fn) {
 
     StackFrame frame = { .num_vars = _stack_vars.len, .stack_offset = 0 };
     
-    Value ret_val = emit_expression(out, fn_node->fn.body, frame);
-    emit_value_to_register(out, ret_val, false);
-    _(out, "ret");
+    Value ret_val = emit_expression(fn_node->fn.body, frame);
+    emit_value_to_register(ret_val, false);
+    _i("ret");
 
     TypeId expected_ret = find_type(fn_node, fn_node->fn.ret);
     if (!is_type_eq(expected_ret, ret_val.typeId)) {
@@ -701,12 +751,12 @@ static Value emit_fn(FILE *out, NodeIdx fn) {
     return ret_val;
 }
 
-static void emit_ram_globals(FILE *out) {
-    fprintf(out, "\nSECTION \"workram\", WRAM0\n");
+static void emit_ram_globals() {
+    __("\nSECTION \"workram\", WRAM0\n");
     
     for (int i=0; i<_ram_vars.len; ++i) {
         RamVariable v = *(RamVariable*) vec_get(&_ram_vars, i);
-        fprintf(out, "\t\t%.*s: ds %d\n", (int)v.symbol_name.len, v.symbol_name.s, v.size_bytes);
+        _i("%.*s: ds %d", (int)v.symbol_name.len, v.symbol_name.s, v.size_bytes);
     }
 }
 
@@ -719,16 +769,16 @@ void output_lr35902(NodeIdx root) {
     init();
     init_types();
 
-    FILE *out = fopen("out.asm", "w");
+    output = fopen("out.asm", "w");
 
     AstNode *root_node = get_node(root);
     assert(root_node->type == AST_MODULE);
 
-    emit_boilerplate(out);
+    emit_boilerplate();
 
     for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
         if (get_node(node)->type == AST_FN) {
-            emit_fn(out, node);
+            emit_fn(node);
         }
         else if (get_node(node)->type == AST_DEF_VAR) {
             record_def_var(node);
@@ -739,7 +789,7 @@ void output_lr35902(NodeIdx root) {
     }
 
     // actually need to emit asm for global variables
-    emit_ram_globals(out);
+    emit_ram_globals();
 
-    fclose(out);
+    fclose(output);
 }
