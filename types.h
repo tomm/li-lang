@@ -3,6 +3,8 @@
 
 #include "str.h"
 
+typedef int TypeId;
+
 typedef struct Type {
     Str name;
     int size;        /* size of type when packed */
@@ -11,13 +13,15 @@ typedef struct Type {
 
     enum TypeType {
         TYPE_PRIM,
+        TYPE_ARRAY,
         // TYPE_PTR,
-        // TYPE_ARRAY,
         // TYPE_STRUCT
     } type;
-} Type;
 
-typedef int TypeId;
+    struct {
+        TypeId contained;
+    } array;
+} Type;
 
 /* TypeId of primitive types (indexes in types vec) */
 #define VOID    0

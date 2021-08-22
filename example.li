@@ -17,14 +17,17 @@ fn test_u16_global() -> void {
 
 var passes: u8;
 var fails: u8;
+var total: u8;
 
 var test_u16: u16;
+var test_arr_u8: [u8; 4];
+var test_arr_2d_u16: [[u16; 2]; 2];
 
-fn pass() { passes = passes + 1; }
-fn fail_() { fails = fails + 1; } // seems 'fail' is an rgbasm special thing...
+fn pass() { passes = passes + 1; total = total + 1; }
+fn fail_() { fails = fails + 1; total = total + 1; } // seems 'fail' is an rgbasm special thing...
 
-fn main() -> void {
-    passes = fails = 0;
+fn main() {
+    passes = fails = total = 0;
 
     // argument passing and arithmetic
     if test_u8_arith(4,0xf) == 0x12 { pass() } else { fail_() };
@@ -50,15 +53,39 @@ fn main() -> void {
 
     test_u16_global();
 
+    // arrays
+    test_arr_u8[0] = 3;
+    test_arr_u8[1] = test_arr_u8[0] + test_arr_u8[0];
+    test_arr_u8[2] = test_arr_u8[1] + test_arr_u8[0];
+    test_arr_u8[3] = test_arr_u8[2] + test_arr_u8[1];
+    test_arr_2d_u16[0][0] = 0x1234;
+    test_arr_2d_u16[0][1] = test_arr_2d_u16[0][0] - 1u16;
+    test_arr_2d_u16[1][0] = test_arr_2d_u16[0][1] * 2u16;
+    test_arr_2d_u16[1][1] = test_arr_2d_u16[1][0] + test_arr_2d_u16[0][0];
+    if test_arr_u8[0] != 3 { fail_() } else { pass() };
+    if test_arr_u8[1] != 6 { fail_() } else { pass() };
+    if test_arr_u8[2] != 9 { fail_() } else { pass() };
+    if test_arr_u8[3] != 15 { fail_() } else { pass() };
+    if test_arr_2d_u16[0][0] != 0x1234 { fail_() } else { pass() };
+    if test_arr_2d_u16[0][1] != 0x1233 { fail_() } else { pass() };
+    if test_arr_2d_u16[1][0] != 0x2466 { fail_() } else { pass() };
+    if test_arr_2d_u16[1][1] != 0x369a { fail_() } else { pass() };
+
+    // if expression
+    if (if 1 {0xcafe} else {0xdead}) == 0xcafe { pass() } else { fail_() };
+    if (if 0 {0xcafe} else {0xdead}) == 0xdead { pass() } else { fail_() };
+
     output_results();
 }
 
-/* Show passed tests in reg 'a', failed tests in 'b' */
+/* Show passed tests in reg 'a', failed tests in 'b', total in 'c' */
 fn output_results() {
     
     asm("
          ld a, [passes]
          ld hl, fails
          ld b, [hl]
+         ld hl, total
+         ld c, [hl]
          db $dd");
 }

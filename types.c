@@ -66,6 +66,14 @@ void init_types() {
 }
 
 bool is_type_eq(TypeId a, TypeId b) {
-    assert(get_type(a)->type == TYPE_PRIM && get_type(b)->type == TYPE_PRIM);
-    return a==b;
+    const Type *ta = get_type(a);
+    const Type *tb = get_type(b);
+    switch (ta->type) {
+        case TYPE_PRIM:
+            return a == b;
+        case TYPE_ARRAY:
+            return ta->size == tb->size &&
+                   ta->type == tb->type &&
+                   is_type_eq(ta->array.contained, tb->array.contained);
+    }
 }

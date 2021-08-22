@@ -3,13 +3,14 @@
 
 #include "vec.h"
 #include "str.h"
+#include "types.h"
 
 typedef int NodeIdx;
 typedef struct Token Token;
 
 typedef struct AstNode {
     enum AstType {
-        AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR, AST_DEF_VAR, AST_TYPENAME
+        AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR, AST_DEF_VAR
     } type;
 
     const Token *start_token; /* for error reporting */
@@ -24,22 +25,18 @@ typedef struct AstNode {
             Str name;
             NodeIdx first_arg;
             NodeIdx body;
-            Str ret;
+            TypeId ret;
         } fn;
 
         struct {
             Str name;
-            NodeIdx typename_;
+            TypeId type;
         } fn_arg;
 
         struct {
             Str name;
-            NodeIdx typename_;
+            TypeId type;
         } var_def;
-
-        struct {
-            Str name;
-        } typename_;
 
         struct {
             enum ExprType {
@@ -83,6 +80,7 @@ typedef struct AstNode {
                         BUILTIN_ASSIGN,
                         BUILTIN_EQ,
                         BUILTIN_NEQ,
+                        BUILTIN_ARRAY_INDEXING,
                     } op;
                 } builtin;
                 struct {

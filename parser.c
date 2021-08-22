@@ -1,6 +1,7 @@
 #include <assert.h>
 #include "parser.h"
 #include "tokenizer.h"
+#include "error.h"
 
 static Vec _node_alloc;
 
@@ -36,6 +37,8 @@ static const Token *tok_next(TokenCursor *cursor, bool skip_space) {
 void init_parser() {
     _node_alloc = vec_init(sizeof(AstNode));
     // XXX never freed
+
+    init_types();
 }
 
 static NodeIdx alloc_node() {
@@ -46,7 +49,9 @@ static NodeIdx alloc_node() {
     return idx;
 }
 
-static void parse_error(const char *msg, enum TokType expected, const Token *got) {
+static void parse_error(const char *msg, enum TokType expected, const Token *got) __attribute__((noreturn));
+static void parse_error(const char *msg, enum TokType expected, const Token *got)
+{
     fprintf(stderr, "%d:%d: %s (expected %s but found %s)\n",
             got->line, got->col, msg, token_type_cstr(expected), token_type_cstr(got->type));
     exit(-1);
@@ -84,95 +89,138 @@ static bool check(TokenCursor *toks, enum TokType type) {
     return tok_peek(toks, 0, true)->type == type;
 }
 
+static NodeIdx parse_expression(TokenCursor *toks);
+static NodeIdx parse_list_expression(TokenCursor *toks);
+
 static NodeIdx parse_primary_expression(TokenCursor *toks) {
     const Token *t = tok_next(toks, true);
-    NodeIdx expr = alloc_node();
 
     switch (t->type) {
         case T_LITERAL_U8:
-            set_node(expr, &(AstNode) {
-                .start_token = t,
-                .type = AST_EXPR,
-                .expr = {
-                    .type = EXPR_LITERAL_U8,
-                    .literal_int = t->int_literal
-                }
-            });
-            break;
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL_U8,
+                        .literal_int = t->int_literal
+                    }
+                });
+                return expr;
+            }
         case T_LITERAL_U16:
-            set_node(expr, &(AstNode) {
-                .start_token = t,
-                .type = AST_EXPR,
-                .expr = {
-                    .type = EXPR_LITERAL_U16,
-                    .literal_int = t->int_literal
-                }
-            });
-            break;
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL_U16,
+                        .literal_int = t->int_literal
+                    }
+                });
+                return expr;
+            }
         case T_LITERAL_STR:
-            set_node(expr, &(AstNode) {
-                .start_token = t,
-                .type = AST_EXPR,
-                .expr = {
-                    .type = EXPR_LITERAL_STR,
-                    .literal_str = t->str_literal
-                }
-            });
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL_STR,
+                        .literal_str = t->str_literal
+                    }
+                });
+                return expr;
+            }
             break;
         case T_IDENT:
-            set_node(expr, &(AstNode) {
-                .start_token = t,
-                .type = AST_EXPR,
-                .expr = {
-                    .type = EXPR_IDENT,
-                    .ident = t->ident
-                }
-            });
-            break;
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_IDENT,
+                        .ident = t->ident
+                    }
+                });
+                return expr;
+            }
+        case T_LPAREN:
+            {
+                NodeIdx expr = parse_list_expression(toks);
+                chomp(toks, T_RPAREN);
+                return expr;
+            }
         default:
             parse_error("Expected primary expression", 0, t);
     }
-        
-    return expr;
 }
-
-static NodeIdx parse_expression(TokenCursor *toks);
-static NodeIdx parse_list_expression(TokenCursor *toks);
 
 static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     NodeIdx n = parse_primary_expression(toks);
 
-    // function call
-    if (tok_peek(toks, 0, true)->type == T_LPAREN) {
-        const Token *start_token = chomp(toks, T_LPAREN);
+    for (;;) {
+        const Token *start_token = tok_peek(toks, 0, true);
 
-        ChildCursor args = ChildCursor_init();
-        while (tok_peek(toks, 0, true)->type != T_RPAREN) {
-            ChildCursor_append(&args, parse_expression(toks));
-            if (tok_peek(toks, 0, true)->type != T_COMMA) {
-                break;
+        // function calling
+        if (start_token->type == T_LPAREN) {
+            chomp(toks, T_LPAREN);
+
+            ChildCursor args = ChildCursor_init();
+            while (tok_peek(toks, 0, true)->type != T_RPAREN) {
+                ChildCursor_append(&args, parse_expression(toks));
+                if (tok_peek(toks, 0, true)->type != T_COMMA) {
+                    break;
+                }
+                chomp(toks, T_COMMA);
             }
-            chomp(toks, T_COMMA);
+
+            chomp(toks, T_RPAREN);
+
+            NodeIdx call = alloc_node();
+            set_node(call, &(AstNode) {
+                .start_token = start_token,
+                .type = AST_EXPR,
+                .expr = {
+                    .type = EXPR_CALL,
+                    .call = {
+                        .callee = n,
+                        .first_arg = args.first_child,
+                    }
+                }
+            });
+
+            n = call;
         }
 
-        chomp(toks, T_RPAREN);
+        // array indexing
+        else if (start_token->type == T_LSQBRACKET) {
+            chomp(toks, T_LSQBRACKET);
+            ChildCursor args = ChildCursor_init();
+            ChildCursor_append(&args, n);
+            ChildCursor_append(&args, parse_list_expression(toks));
+            chomp(toks, T_RSQBRACKET);
 
-        NodeIdx call = alloc_node();
-        set_node(call, &(AstNode) {
-            .start_token = start_token,
-            .type = AST_EXPR,
-            .expr = {
-                .type = EXPR_CALL,
-                .call = {
-                    .callee = n,
-                    .first_arg = args.first_child,
+            n = alloc_node();
+            set_node(n, &(AstNode) {
+                .type = AST_EXPR,
+                .start_token = start_token,
+                .expr = {
+                    .type = EXPR_BUILTIN,
+                    .builtin = {
+                        .op = BUILTIN_ARRAY_INDEXING,
+                        .first_arg = args.first_child,
+                    }
                 }
-            }
-        });
-        return call;
-    }
-    else {
-        return n;
+            });
+        }
+        else {
+            return n;
+        }
     }
 }
 
@@ -409,23 +457,49 @@ static NodeIdx parse_list_expression(TokenCursor *toks) {
     return list;
 }
 
-static NodeIdx parse_typename(TokenCursor *toks) {
+static TypeId parse_type(TokenCursor *toks) {
     const Token *t = tok_next(toks, true);
 
-    if (t->type != T_IDENT) {
+    if (t->type == T_IDENT) {
+        TypeId type = lookup_type(t->ident);
+        if (type == -1) {
+            fatal_error(t, "Unknown type '%.*s'", (int)t->ident.len, t->ident.s);
+        }
+        return type;
+    }
+    else if (t->type == T_LSQBRACKET) {
+        // an array
+        TypeId contained = parse_type(toks);
+        chomp(toks, T_SEMICOLON);
+        const Token *size = tok_next(toks, true);
+        if (size->type != T_LITERAL_U8 && size->type != T_LITERAL_U16) {
+            parse_error("Expected array length", T_LITERAL_U16, size);
+        }
+        chomp(toks, T_RSQBRACKET);
+        const int byte_size = get_type(contained)->size * size->int_literal;
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "[%.*s; %d]",
+                (int)get_type(contained)->name.len,
+                get_type(contained)->name.s,
+                size->int_literal);
+        // XXX this is never deallocated (but the compiler has no teardown anyhow...)
+        char *type_name = strdup(buf);
+
+        return add_type((Type) {
+            .type = TYPE_ARRAY,
+            .name = { .s = type_name, .len = strlen(type_name) },
+            .size = byte_size,
+            .stack_size = byte_size,
+            .stack_offset = 0,
+            .array = {
+                .contained = contained
+            }
+        });
+    }
+    else {
         parse_error("Expected variable name", T_IDENT, t);
     }
-
-    NodeIdx tn = alloc_node();
-    set_node(tn, &(AstNode) {
-        .type = AST_TYPENAME,
-        .start_token = t,
-        .typename_ = {
-            .name = t->ident,
-        }
-    });
-
-    return tn;
 }
 
 static NodeIdx parse_var_def(TokenCursor *toks) {
@@ -439,7 +513,7 @@ static NodeIdx parse_var_def(TokenCursor *toks) {
     }
 
     chomp(toks, T_COLON);
-    NodeIdx _typename = parse_typename(toks);
+    TypeId type = parse_type(toks);
     chomp(toks, T_SEMICOLON);
 
     set_node(var, &(AstNode) {
@@ -447,7 +521,7 @@ static NodeIdx parse_var_def(TokenCursor *toks) {
         .start_token = t,
         .var_def = {
             .name = t->ident,
-            .typename_ = _typename,
+            .type = type,
         }
     });
 
@@ -475,7 +549,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
             n->start_token = chomp(toks, T_IDENT);
             n->fn_arg.name = n->start_token->ident;
             chomp(toks, T_COLON);
-            n->fn_arg.typename_ = parse_typename(toks);
+            n->fn_arg.type = parse_type(toks);
 
             ChildCursor_append(&args, a);
 
@@ -486,18 +560,13 @@ static NodeIdx parse_function(TokenCursor *toks) {
 
     chomp(toks, T_RPAREN);
 
-    Str ret; // return type
+    TypeId ret; // return type
     if (check(toks, T_RARROW)) {
         chomp(toks, T_RARROW);
 
-        const Token *ret_token = tok_next(toks, true);
-        if (ret_token->type == T_IDENT) {
-            ret = ret_token->ident;
-        } else {
-            parse_error("Expected return type", T_IDENT, ret_token);
-        }
+        ret = parse_type(toks);
     } else {
-        ret = (Str) { .s = "void", .len = 4 };
+        ret = VOID;
     }
 
     chomp(toks, T_LBRACE);
@@ -569,35 +638,36 @@ void print_ast(NodeIdx nidx, int depth) {
             }
             break;
         case AST_FN_ARG:
-            Str_puts(node->fn_arg.name, stdout);
-            fputs(":", stdout);
-            print_ast(node->fn_arg.typename_, depth);
+            {
+                const Type *type = get_type(node->fn_arg.type);
+                fprintf(stdout, "%.*s: %.*s",
+                        (int)node->fn_arg.name.len, node->fn_arg.name.s,
+                        (int)type->name.len, type->name.s);
+            }
             break;
         case AST_FN:
-            _indent(depth);
-            printf("fn ");
-            Str_puts(node->fn.name, stdout);
-            printf("(");
-            for (NodeIdx child=node->fn.first_arg; child != 0; child = get_node(child)->next_sibling) {
-                print_ast(child, depth+1);
-                fputs(", ", stdout);
+            {
+                _indent(depth);
+                printf("fn ");
+                Str_puts(node->fn.name, stdout);
+                printf("(");
+                for (NodeIdx child=node->fn.first_arg; child != 0; child = get_node(child)->next_sibling) {
+                    print_ast(child, depth+1);
+                    fputs(", ", stdout);
+                }
+                const Type *ret = get_type(node->fn.ret);
+                printf(") -> %.*s\n", (int)ret->name.len, ret->name.s);
+                print_ast(node->fn.body, depth+1);
             }
-            printf(") -> ");
-            Str_puts(node->fn.ret, stdout);
-            printf("\n");
-            print_ast(node->fn.body, depth+1);
             break;
         case AST_DEF_VAR:
             _indent(depth);
-            printf("def var %.*s of type:\n",
-                    (int)node->var_def.name.len,
-                    node->var_def.name.s);
-            print_ast(node->var_def.typename_, depth+1);
-            break;
-        case AST_TYPENAME:
-            _indent(depth);
-            printf("type %.*s\n", (int)node->typename_.name.len,
-                    node->typename_.name.s);
+            {
+                const Type *type = get_type(node->var_def.type);
+                printf("def var %.*s of type %.*s\n",
+                        (int)node->var_def.name.len, node->var_def.name.s,
+                        (int)type->name.len, type->name.s);
+            }
             break;
         case AST_EXPR:
             _indent(depth+1);
