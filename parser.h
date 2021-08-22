@@ -29,7 +29,7 @@ typedef struct AstNode {
 
         struct {
             Str name;
-            Str type;
+            NodeIdx typename_;
         } fn_arg;
 
         struct {

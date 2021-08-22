@@ -11,6 +11,8 @@ typedef struct Token {
         T_RBRACE,
         T_LPAREN,
         T_RPAREN,
+        T_LSQBRACKET,
+        T_RSQBRACKET,
         T_SEMICOLON,
         T_COLON,
         T_MINUS,

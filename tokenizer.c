@@ -9,6 +9,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_RBRACE: return "}";
         case T_LPAREN: return "(";
         case T_RPAREN: return ")";
+        case T_LSQBRACKET: return "[";
+        case T_RSQBRACKET: return "]";
         case T_SEMICOLON: return ";";
         case T_COLON: return ":";
         case T_MINUS: return "-";
@@ -56,6 +58,8 @@ Vec lex(Str buf) {
         else if (*pos == '}') { EMIT(((Token) { T_RBRACE, line, col })); NEXT(); }
         else if (*pos == '(') { EMIT(((Token) { T_LPAREN, line, col })); NEXT(); }
         else if (*pos == ')') { EMIT(((Token) { T_RPAREN, line, col })); NEXT(); }
+        else if (*pos == '[') { EMIT(((Token) { T_LSQBRACKET, line, col })); NEXT(); }
+        else if (*pos == ']') { EMIT(((Token) { T_RSQBRACKET, line, col })); NEXT(); }
         else if (*pos == ';') { EMIT(((Token) { T_SEMICOLON, line, col })); NEXT(); }
         else if (*pos == ':') { EMIT(((Token) { T_COLON, line, col })); NEXT(); }
         else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col })); NEXT(); NEXT(); }

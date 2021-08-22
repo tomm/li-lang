@@ -488,6 +488,13 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
 }
 
+static TypeId lookup_typeid_from_ast_typename_node(NodeIdx typename_) {
+    AstNode *n = get_node(typename_);
+    assert(n->type == AST_TYPENAME);
+
+    return find_type(n, n->typename_.name);
+}
+
 static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg_list_head, StackFrame *frame) {
     // push last to first
     if (arg_list_head == 0) {
@@ -507,15 +514,16 @@ static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg
     Value v = emit_expression(arg_list_head, *frame);
     emit_push(n, v, frame);
 
-    const Type *expected = get_type(find_type(n, arg_type->fn_arg.type));
+    TypeId expected_typeid = lookup_typeid_from_ast_typename_node(arg_type->fn_arg.typename_);
+    const Type *expected_type = get_type(expected_typeid);
 
-    if (!is_type_eq(v.typeId, find_type(n, arg_type->fn_arg.type))) {
+    if (!is_type_eq(v.typeId, expected_typeid)) {
         compile_error(n, "error passing argument %d: type %.*s does not match expected type %.*s",
                 arg_num + 1,
                 (int)get_type(v.typeId)->name.len,
                 get_type(v.typeId)->name.s,
-                (int)expected->name.len,
-                expected->name.s);
+                (int)expected_type->name.len,
+                expected_type->name.s);
     }
 }
 
@@ -610,11 +618,6 @@ const AstNode *lookup_global_var(Str name)
     return NULL;
 }
 
-static TypeId find_type2(NodeIdx typename_) {
-    assert(get_node(typename_)->type == AST_TYPENAME);
-    return find_type(get_node(typename_), get_node(typename_)->typename_.name);
-}
-
 static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IF_ELSE);
@@ -688,7 +691,7 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     if (global) {
         assert(global->type == AST_DEF_VAR);
         _i("ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
-        return (Value) { .typeId = find_type2(global->var_def.typename_), .storage = ST_REG_EA };
+        return (Value) { .typeId = lookup_typeid_from_ast_typename_node(global->var_def.typename_), .storage = ST_REG_EA };
     }
 
     compile_error(n, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
@@ -737,7 +740,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
 static void record_def_var(NodeIdx def_var) {
     AstNode *var_node = get_node(def_var);
     assert(var_node->type == AST_DEF_VAR);
-    TypeId t = find_type2(var_node->var_def.typename_);
+    TypeId t = lookup_typeid_from_ast_typename_node(var_node->var_def.typename_);
     
     vec_push(&_ram_vars, &(RamVariable) {
         .size_bytes = get_type(t)->size,
@@ -758,7 +761,7 @@ static Value emit_fn(NodeIdx fn) {
     for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
         assert(get_node(arg)->type == AST_FN_ARG);
         
-        TypeId argtype = find_type(get_node(arg), get_node(arg)->fn_arg.type);
+        TypeId argtype = lookup_typeid_from_ast_typename_node(get_node(arg)->fn_arg.typename_);
 
         StackVarIdx v = alloc_var();
         *get_stack_var(v) = (StackVar) {

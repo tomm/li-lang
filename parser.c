@@ -475,7 +475,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
             n->start_token = chomp(toks, T_IDENT);
             n->fn_arg.name = n->start_token->ident;
             chomp(toks, T_COLON);
-            n->fn_arg.type = chomp(toks, T_IDENT)->ident;
+            n->fn_arg.typename_ = parse_typename(toks);
 
             ChildCursor_append(&args, a);
 
@@ -571,7 +571,7 @@ void print_ast(NodeIdx nidx, int depth) {
         case AST_FN_ARG:
             Str_puts(node->fn_arg.name, stdout);
             fputs(":", stdout);
-            Str_puts(node->fn_arg.type, stdout);
+            print_ast(node->fn_arg.typename_, depth);
             break;
         case AST_FN:
             _indent(depth);
