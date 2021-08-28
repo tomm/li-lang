@@ -20,7 +20,7 @@ static void compile_error(const AstNode *at, const char *format, ...) {
 }
 
 static TypeId find_type(const AstNode *n, Str typename) {
-    printf("Looking up type %.*s\n", (int)typename.len, typename.s);
+    //printf("Looking up type %.*s\n", (int)typename.len, typename.s);
     TypeId id = lookup_type(typename);
     if (id == -1) {
         compile_error(n, "Unknown type %.*s", (int)typename.len, typename.s);
@@ -41,8 +41,10 @@ static void emit_boilerplate(FILE *out) {
 "SECTION \"Code\", ROM0[$150]\n"
 "__start:\n"
 "\t\tcall main\n"
-"\t\tdb $dd ; debug dump of register set\n"
+"\t.loop\n"
 "\t\thalt\n"
+"\t\tnop\n"
+"\t\tjr .loop\n"
     , out);
 }
 
@@ -58,6 +60,16 @@ typedef struct Value {
         ST_REG_VAL_AUX
     } storage;
 } Value;
+
+typedef struct RamVariable {
+    Str symbol_name;
+    int size_bytes;
+} RamVariable;
+
+Vec /*<RamVariable>*/ _ram_vars;
+
+
+
 
 typedef int StackVarIdx;
 typedef struct StackVar {
@@ -94,15 +106,23 @@ static void _(FILE *f, const char *format, ...) {
     fputs(buf, f);
     fputs("\n", f);
 }
+
+static void _label(FILE *f, int label_num) {
+    fprintf(f, "\t.l%d:\n", label_num);
+}
+
 static StackVar *get_stack_var(StackVarIdx idx) {
     return vec_get(&_stack_vars, idx);
 }
 
 static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
-    assert(v.typeId == U8 || v.typeId == U16);
     const enum Storage st = to_aux_reg ? ST_REG_VAL_AUX : ST_REG_VAL;
 
-    if (v.typeId == U8) {
+    if (v.typeId == VOID) {
+        return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+    }
+
+    else if (v.typeId == U8) {
         switch (v.storage) {
             case ST_REG_EA:
                 _(out, "ld %s, [hl]", to_aux_reg ? "b" : "a");
@@ -118,7 +138,9 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
                 }
                 return (Value) { .typeId = U8, .storage = st };
         }
-    } else {
+    }
+    
+    else if (v.typeId == U16) {
         switch (v.storage) {
             case ST_REG_EA:
                 _(out, "ld a, [hl+]");
@@ -138,13 +160,18 @@ static Value emit_value_to_register(FILE *out, Value v, bool to_aux_reg) {
                 return (Value) { .typeId = U16, .storage = st };
         }
     }
+
+    assert(false);
 }
 
-static void emit_push(FILE *out, Value v, StackFrame *frame) {
+static void emit_push(FILE *out, AstNode *n, Value v, StackFrame *frame) {
+    if (v.typeId == VOID) {
+        compile_error(n, "can not use a void value");
+        return;
+    }
     switch (v.storage) {
         case ST_REG_VAL:
             switch (v.typeId) {
-                case VOID: assert(false);
                 case U8:
                     _(out, "push af");
                     frame->stack_offset += 2;
@@ -157,7 +184,6 @@ static void emit_push(FILE *out, Value v, StackFrame *frame) {
             }
         case ST_REG_EA:
             switch (v.typeId) {
-                case VOID: assert(false);
                 case U8:
                     _(out, "push hl");
                     frame->stack_offset += 2;
@@ -207,10 +233,19 @@ static Value emit_pop(FILE *out, Value v, StackFrame *frame, bool to_aux_reg) {
 }
 static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame);
 
-static Value emit_builtin_u8(FILE *out, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+static Value emit_builtin_u8(FILE *out, NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
     // v1 on stack, v2 as tmp (active Value)
     v2 = emit_value_to_register(out, v2, true);   // v2 in `b`
     v1 = emit_pop(out, v1, frame, false);
+
+    if (op == BUILTIN_ASSIGN) {
+        if (v1.storage != ST_REG_EA) {
+            compile_error(get_node(expr), "Can not assign to temporary");
+        }
+        _(out, "ld [hl], b");
+        return (Value) { .typeId = U8, .storage = ST_REG_EA };
+    }
+
     v1 = emit_value_to_register(out, v1, false);  // v1 in `a`
 
     // assumes binary op
@@ -237,10 +272,22 @@ static Value emit_builtin_u8(FILE *out, StackFrame *frame, enum BuiltinOp op, Va
     return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin_u16(FILE *out, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
+static Value emit_builtin_u16(FILE *out, NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
     // v1 on stack, v2 as tmp (active Value)
     v2 = emit_value_to_register(out, v2, true);   // v2 in `de`
     v1 = emit_pop(out, v1, frame, false);
+
+    if (op == BUILTIN_ASSIGN) {
+        if (v1.storage != ST_REG_EA) {
+            compile_error(get_node(expr), "Can not assign to temporary");
+        }
+        _(out, "ld a, e");
+        _(out, "ld [hl+], a");
+        _(out, "ld a, d");
+        _(out, "ld [hl-], a");
+        return (Value) { .typeId = U16, .storage = ST_REG_EA };
+    }
+
     v1 = emit_value_to_register(out, v1, false);  // v1 in `hl`
 
     switch (op) {
@@ -298,7 +345,7 @@ static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
     assert(arg1->next_sibling != 0);
 
     Value v1 = emit_expression(out, n->expr.builtin.first_arg, frame);
-    emit_push(out, v1, &frame);
+    emit_push(out, arg1, v1, &frame);
     Value v2 = emit_expression(out, arg1->next_sibling, frame);
 
     if (!is_type_eq(v2.typeId, v1.typeId)) {
@@ -311,8 +358,8 @@ static Value emit_builtin(FILE *out, NodeIdx call, StackFrame frame) {
 
 
     switch (v2.typeId) {
-        case U8: return emit_builtin_u8(out, &frame, n->expr.builtin.op, v1, v2);
-        case U16: return emit_builtin_u16(out, &frame, n->expr.builtin.op, v1, v2);
+        case U8: return emit_builtin_u8(out, call, &frame, n->expr.builtin.op, v1, v2);
+        case U16: return emit_builtin_u16(out, call, &frame, n->expr.builtin.op, v1, v2);
         default: assert(false);
     }
 }
@@ -361,7 +408,7 @@ static void emit_call_push_args(FILE *out, int arg_num, NodeIdx first_arg_type, 
 
     assert(n->type == AST_EXPR);
     Value v = emit_expression(out, arg_list_head, *frame);
-    emit_push(out, v, frame);
+    emit_push(out, n, v, frame);
 
     const Type *expected = get_type(find_type(n, arg_type->fn_arg.type));
 
@@ -400,6 +447,20 @@ static Value emit_call(FILE *out, NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
+        if (Str_eq(callee->expr.ident, "asm")) {
+            // emit literal asm
+            AstNode *arg = get_node(n->expr.call.first_arg);
+            printf("%d %d\n", arg->type, arg->expr.type);
+            if (arg->type != AST_EXPR || arg->expr.type != EXPR_LITERAL_STR) {
+                compile_error(callee, "asm() expects string literal argument");
+            }
+            if (arg->next_sibling != 0) {
+                compile_error(callee, "asm() takes only one argument");
+            }
+            fprintf(out, "%.*s", (int)arg->expr.literal_str.len, arg->expr.literal_str.s);
+            return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+        }
+
         const AstNode *fn = lookup_fn(callee->expr.ident);
 
         if (fn == NULL) {
@@ -440,21 +501,103 @@ const StackVar *lookup_stack_var(Str ident, StackFrame frame)
     return NULL;
 }
 
+const AstNode *lookup_global_var(Str name)
+{
+    // XXX assumes root of AST is index 0
+    AstNode *mod = get_node(0);
+
+    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
+        AstNode *child = get_node(i);
+        if (child->type != AST_DEF_VAR) continue;
+        if (Str_eq2(child->var_def.name, name)) return child;
+    }
+    return NULL;
+}
+
+static TypeId find_type2(NodeIdx typename_) {
+    assert(get_node(typename_)->type == AST_TYPENAME);
+    return find_type(get_node(typename_), get_node(typename_)->typename_.name);
+}
+
+static int _local_label_seq = 0;
+
+static Value emit_if_else(FILE *out, NodeIdx expr, StackFrame frame) {
+    AstNode *n = get_node(expr);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_IF_ELSE);
+
+    Value condition = emit_expression(out, n->expr.if_else.condition, frame);
+
+    const int else_label = _local_label_seq++;
+    const int end_label = _local_label_seq++;
+
+    if (condition.typeId == U8) {
+        condition = emit_value_to_register(out, condition, false);  // to 'a' register
+        _(out, "and a, a");
+        _(out, "jp z, .l%d", else_label);
+    }
+    else if (condition.typeId == U16) {
+        condition = emit_value_to_register(out, condition, false);  // to 'hl' register
+        _(out, "ld a, l");
+        _(out, "or a, h");
+        _(out, "jp z, .l%d", else_label);
+    } else {
+        compile_error(n, "Invalid condition type in if expression. Expected u8 or u16, but found %.*s",
+                (int)get_type(condition.typeId)->name.len,
+                get_type(condition.typeId)->name.s);
+        return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+    }
+
+    Value on_true = emit_expression(out, n->expr.if_else.on_true, frame);
+
+    if (n->expr.if_else.on_false != 0) {
+        _(out, "jp .l%d", end_label);
+        _label(out, else_label);
+
+        Value on_false = emit_expression(out, n->expr.if_else.on_false, frame);
+
+        if (!is_type_eq(on_false.typeId, on_true.typeId)) {
+            compile_error(n, "if-else expects both branches to evaluate to the same type. found %.*s and %.*s",
+                    (int)get_type(on_true.typeId)->name.len,
+                    get_type(on_true.typeId)->name.s,
+                    (int)get_type(on_false.typeId)->name.len,
+                    get_type(on_false.typeId)->name.s);
+        }
+
+        _label(out, end_label);
+        // the storage class must be the same
+        if (on_false.storage != on_true.storage) {
+            compile_error(n, "storage class of if branches differs. THIS CODE IS UNFINISHED. giving up");
+        }
+    } else {
+        _label(out, else_label);
+    }
+    return on_true;
+}
+
 static Value emit_identifier(FILE *out, NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IDENT);
 
     const StackVar *var = lookup_stack_var(n->expr.ident, frame);
-    if (var == NULL) {
-        compile_error(n, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
+
+    if (var) {
+        // bytes are pushed onto the stack as 2 bytes (push af), meaning there is an additional
+        // offset of 1 to get to the byte corresponding to 'a', rather than the 'f' garbage...
+        const int type_weirdness_offset = var->type == U8 ? 1 : 0;
+
+        _(out, "ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
+        return (Value) { .typeId = var->type, .storage = ST_REG_EA };
     }
 
-    // bytes are pushed onto the stack as 2 bytes (push af), meaning there is an additional
-    // offset of 1 to get to the byte corresponding to 'a', rather than the 'f' garbage...
-    const int type_weirdness_offset = var->type == U8 ? 1 : 0;
+    const AstNode *global = lookup_global_var(n->expr.ident);
 
-    _(out, "ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
-    return (Value) { .typeId = var->type, .storage = ST_REG_EA };
+    if (global) {
+        assert(global->type == AST_DEF_VAR);
+        _(out, "ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
+        return (Value) { .typeId = find_type2(global->var_def.typename_), .storage = ST_REG_EA };
+    }
+
+    compile_error(n, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
 }
 
 static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
@@ -482,10 +625,30 @@ static Value emit_expression(FILE *out, NodeIdx expr, StackFrame frame) {
             _(out, "ld hl, $%x", n->expr.literal_int);
             v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
             break;
+        case EXPR_LITERAL_VOID:
+            // the semicolon at the end of a list of expressions :)
+            v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+            break;
         case EXPR_CAST:
             return emit_cast(out, expr, frame);
+        case EXPR_IF_ELSE:
+            return emit_if_else(out, expr, frame);
+        default:
+            assert(false);
     }
     return v;
+}
+
+// just records for ASM emission after code has been emitted
+static void record_def_var(NodeIdx def_var) {
+    AstNode *var_node = get_node(def_var);
+    assert(var_node->type == AST_DEF_VAR);
+    TypeId t = find_type2(var_node->var_def.typename_);
+    
+    vec_push(&_ram_vars, &(RamVariable) {
+        .size_bytes = get_type(t)->size,
+        .symbol_name = var_node->var_def.name
+    });
 }
 
 static Value emit_fn(FILE *out, NodeIdx fn) {
@@ -538,8 +701,18 @@ static Value emit_fn(FILE *out, NodeIdx fn) {
     return ret_val;
 }
 
+static void emit_ram_globals(FILE *out) {
+    fprintf(out, "\nSECTION \"workram\", WRAM0\n");
+    
+    for (int i=0; i<_ram_vars.len; ++i) {
+        RamVariable v = *(RamVariable*) vec_get(&_ram_vars, i);
+        fprintf(out, "\t\t%.*s: ds %d\n", (int)v.symbol_name.len, v.symbol_name.s, v.size_bytes);
+    }
+}
+
 static void init() {
     _stack_vars = vec_init(sizeof(StackVar));
+    _ram_vars = vec_init(sizeof(RamVariable));
 }
 
 void output_lr35902(NodeIdx root) {
@@ -553,9 +726,20 @@ void output_lr35902(NodeIdx root) {
 
     emit_boilerplate(out);
 
-    for (NodeIdx fn=root_node->module.first_child; fn != 0; fn=get_node(fn)->next_sibling) {
-        emit_fn(out, fn);
+    for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
+        if (get_node(node)->type == AST_FN) {
+            emit_fn(out, node);
+        }
+        else if (get_node(node)->type == AST_DEF_VAR) {
+            record_def_var(node);
+        }
+        else {
+            assert(false);
+        }
     }
+
+    // actually need to emit asm for global variables
+    emit_ram_globals(out);
 
     fclose(out);
 }

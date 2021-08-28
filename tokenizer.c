@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include <ctype.h>
+#include <assert.h>
 
 const char *token_type_cstr(enum TokType type) {
     switch (type) {
@@ -16,17 +17,22 @@ const char *token_type_cstr(enum TokType type) {
         case T_BITOR: return "|";
         case T_BITXOR: return "^";
         case T_FN: return "fn";
+        case T_VAR: return "var";
+        case T_ASSIGN: return "=";
         case T_GT: return ">";
         case T_AS: return "as";
         case T_RETURN: return "return";
         case T_ASTERISK: return "*";
         case T_COMMA: return ",";
         case T_IDENT: return "identifier";
+        case T_LITERAL_STR: return "literal str";
         case T_LITERAL_U8: return "literal u8";
         case T_LITERAL_U16: return "literal u16";
+        case T_IF: return "if";
+        case T_ELSE: return "else";
         case T_RARROW: return "->";
         case T_EOF: return "end-of-file";
-        default: abort();
+        default: assert(false);
     }
 }
 
@@ -58,8 +64,27 @@ Vec lex(Str buf) {
         else if (*pos == '&') { EMIT(((Token) { T_BITAND, line, col })); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_BITOR, line, col })); NEXT(); }
         else if (*pos == '^') { EMIT(((Token) { T_BITXOR, line, col })); NEXT(); }
+        else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col })); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col })); NEXT(); }
+        else if (*pos == '"') {
+            Token t = { T_LITERAL_STR, line, col };
+
+            NEXT();
+
+            t.str_literal.len = 0;
+            t.str_literal.s = pos;
+
+            while (pos < end && *pos != '"') {
+                t.str_literal.len++;
+                NEXT();
+            }
+
+            // skip terminating '"'
+            NEXT();
+
+            EMIT(t);
+        }
         else if (*pos == ',') { EMIT(((Token) { T_COMMA, line, col })); NEXT(); }
         // C++ comment
         else if ((*pos == '/') && LOOK_AHEAD() == '/') {
@@ -99,6 +124,12 @@ Vec lex(Str buf) {
                 EMIT(((Token) { T_RETURN, t.line, t.col }));
             } else if (Str_eq(t.ident, "fn")) {
                 EMIT(((Token) { T_FN, t.line, t.col }));
+            } else if (Str_eq(t.ident, "var")) {
+                EMIT(((Token) { T_VAR, t.line, t.col }));
+            } else if (Str_eq(t.ident, "if")) {
+                EMIT(((Token) { T_IF, t.line, t.col }));
+            } else if (Str_eq(t.ident, "else")) {
+                EMIT(((Token) { T_ELSE, t.line, t.col }));
             } else {
                 EMIT(t);
             }

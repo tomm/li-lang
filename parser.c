@@ -109,6 +109,16 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 }
             });
             break;
+        case T_LITERAL_STR:
+            set_node(expr, &(AstNode) {
+                .start_token = t,
+                .type = AST_EXPR,
+                .expr = {
+                    .type = EXPR_LITERAL_STR,
+                    .literal_str = t->str_literal
+                }
+            });
+            break;
         case T_IDENT:
             set_node(expr, &(AstNode) {
                 .start_token = t,
@@ -127,6 +137,7 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
 }
 
 static NodeIdx parse_expression(TokenCursor *toks);
+static NodeIdx parse_list_expression(TokenCursor *toks);
 
 static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     NodeIdx n = parse_primary_expression(toks);
@@ -256,22 +267,103 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
     return n;
 }
 
+static NodeIdx parse_conditional_expression(TokenCursor *toks) {
+    if (tok_peek(toks, 0, true)->type == T_IF) {
+        const Token *t = chomp(toks, T_IF);
+
+        NodeIdx condition = parse_expression(toks);
+        chomp(toks, T_LBRACE);
+        NodeIdx on_true = parse_list_expression(toks);
+        chomp(toks, T_RBRACE);
+        NodeIdx on_false = 0;
+
+        if (tok_peek(toks, 0, true)->type == T_ELSE) {
+            chomp(toks, T_ELSE);
+            chomp(toks, T_LBRACE);
+            on_false = parse_list_expression(toks);
+            chomp(toks, T_RBRACE);
+        }
+
+        NodeIdx if_else = alloc_node();
+        set_node(if_else, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_IF_ELSE,
+                .if_else = {
+                    .condition = condition,
+                    .on_true = on_true,
+                    .on_false = on_false
+                }
+            }
+        });
+
+        return if_else;
+    } else {
+        return parse_additive_expression(toks);
+    }
+}
+
+static NodeIdx parse_assignment_expression(TokenCursor *toks) {
+    NodeIdx n = parse_conditional_expression(toks);
+
+    // right associative
+    if (tok_peek(toks, 0, true)->type == T_ASSIGN)
+    {
+        const Token *t = chomp(toks, T_ASSIGN);
+
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, n);
+        ChildCursor_append(&args, parse_assignment_expression(toks));
+        
+        n = alloc_node();
+        set_node(n, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = BUILTIN_ASSIGN,
+                    .first_arg = args.first_child
+                }
+            }
+        });
+    }
+
+    return n;
+}
+
 static NodeIdx parse_expression(TokenCursor *toks) {
-    return parse_additive_expression(toks);
+    return parse_assignment_expression(toks);
 }
 
 static NodeIdx parse_list_expression(TokenCursor *toks) {
     ChildCursor exprs = ChildCursor_init();
     
     const Token *start_token = tok_peek(toks, 0, true);
+    bool is_void = false;
 
     while (tok_peek(toks, 0, true)->type != T_RBRACE) {
         ChildCursor_append(&exprs, parse_expression(toks));
+        is_void = false;
         if (tok_peek(toks, 0, true)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
+            is_void = true;
         } else {
             break;
         }
+    }
+
+    if (is_void) {
+        // expression list ends with semicolon: insert void literal
+        NodeIdx void_node = alloc_node();
+        set_node(void_node, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = start_token,
+            .expr = { .type = EXPR_LITERAL_VOID }
+        });
+
+        ChildCursor_append(&exprs, void_node);
     }
 
     NodeIdx list = alloc_node();
@@ -286,6 +378,51 @@ static NodeIdx parse_list_expression(TokenCursor *toks) {
         }
     });
     return list;
+}
+
+static NodeIdx parse_typename(TokenCursor *toks) {
+    const Token *t = tok_next(toks, true);
+
+    if (t->type != T_IDENT) {
+        parse_error("Expected variable name", T_IDENT, t);
+    }
+
+    NodeIdx tn = alloc_node();
+    set_node(tn, &(AstNode) {
+        .type = AST_TYPENAME,
+        .start_token = t,
+        .typename_ = {
+            .name = t->ident,
+        }
+    });
+
+    return tn;
+}
+
+static NodeIdx parse_var_def(TokenCursor *toks) {
+    NodeIdx var = alloc_node();
+
+    // expect variable name
+    const Token *t = tok_next(toks, true);
+
+    if (t->type != T_IDENT) {
+        parse_error("Expected variable name", T_IDENT, t);
+    }
+
+    chomp(toks, T_COLON);
+    NodeIdx _typename = parse_typename(toks);
+    chomp(toks, T_SEMICOLON);
+
+    set_node(var, &(AstNode) {
+        .type = AST_DEF_VAR,
+        .start_token = t,
+        .var_def = {
+            .name = t->ident,
+            .typename_ = _typename,
+        }
+    });
+
+    return var;
 }
 
 static NodeIdx parse_function(TokenCursor *toks) {
@@ -361,6 +498,9 @@ NodeIdx parse_module(TokenCursor *toks) {
         t = tok_next(toks, true);
 
         switch (t->type) {
+            case T_VAR:
+                ChildCursor_append(&children, parse_var_def(toks));
+                break;
             case T_FN:
                 ChildCursor_append(&children, parse_function(toks));
                 break;
@@ -418,6 +558,18 @@ void print_ast(NodeIdx nidx, int depth) {
             printf("\n");
             print_ast(node->fn.body, depth+1);
             break;
+        case AST_DEF_VAR:
+            _indent(depth);
+            printf("def var %.*s of type:\n",
+                    (int)node->var_def.name.len,
+                    node->var_def.name.s);
+            print_ast(node->var_def.typename_, depth+1);
+            break;
+        case AST_TYPENAME:
+            _indent(depth);
+            printf("type %.*s\n", (int)node->typename_.name.len,
+                    node->typename_.name.s);
+            break;
         case AST_EXPR:
             _indent(depth+1);
             switch (node->expr.type) {
@@ -437,6 +589,26 @@ void print_ast(NodeIdx nidx, int depth) {
                     break;
                 case EXPR_LITERAL_U16:
                     printf("literal u16 (%d)\n", node->expr.literal_int);
+                    break;
+                case EXPR_LITERAL_STR:
+                    printf("literal str (%.*s)\n", (int)node->expr.literal_str.len, node->expr.literal_str.s);
+                    break;
+                case EXPR_LITERAL_VOID:
+                    printf("literal void\n");
+                    break;
+                case EXPR_IF_ELSE:
+                    printf("if\n");
+                    _indent(depth+2);
+                    printf("condition\n");
+                    print_ast(node->expr.if_else.condition, depth+2);
+                    _indent(depth+2);
+                    printf("on_true\n");
+                    print_ast(node->expr.if_else.on_true, depth+2);
+                    _indent(depth+2);
+                    if (node->expr.if_else.on_false != 0) {
+                        printf("on_false\n");
+                        print_ast(node->expr.if_else.on_false, depth+2);
+                    }
                     break;
                 case EXPR_CALL:
                     printf("expr_call\n");

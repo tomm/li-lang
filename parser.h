@@ -9,7 +9,7 @@ typedef struct Token Token;
 
 typedef struct AstNode {
     enum AstType {
-        AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR
+        AST_MODULE, AST_FN, AST_FN_ARG, AST_EXPR, AST_DEF_VAR, AST_TYPENAME
     } type;
 
     const Token *start_token; /* for error reporting */
@@ -33,22 +33,40 @@ typedef struct AstNode {
         } fn_arg;
 
         struct {
+            Str name;
+            NodeIdx typename_;
+        } var_def;
+
+        struct {
+            Str name;
+        } typename_;
+
+        struct {
             enum ExprType {
                 EXPR_LIST,  // like C comma operator, but using ;
                 EXPR_IDENT,
+                EXPR_LITERAL_VOID,
                 EXPR_LITERAL_U8,
                 EXPR_LITERAL_U16,
+                EXPR_LITERAL_STR,
                 EXPR_CALL,
                 EXPR_BUILTIN,
                 EXPR_CAST,
+                EXPR_IF_ELSE,
             } type;
 
             union {
+                struct {
+                    NodeIdx condition;
+                    NodeIdx on_true;
+                    NodeIdx on_false;
+                } if_else;
                 struct {
                     NodeIdx first_child;
                 } list;
                 Str ident;
                 int literal_int;
+                Str literal_str;
                 struct {
                     NodeIdx callee;
                     NodeIdx first_arg;
@@ -61,7 +79,8 @@ typedef struct AstNode {
                         BUILTIN_BITAND,
                         BUILTIN_BITOR,
                         BUILTIN_BITXOR,
-                        BUILTIN_MUL
+                        BUILTIN_MUL,
+                        BUILTIN_ASSIGN
                     } op;
                 } builtin;
                 struct {

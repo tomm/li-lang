@@ -1,0 +1,14 @@
+* local variables
+* local variable scopes
+* loops
+* arrays
+* pointers
+
+typename syntax
+
+[u8; 10] = char[10]
+
+&u8 = u8*
+
+&[u8; 10] = char[10]
+[&u8; 10] = char*[10]

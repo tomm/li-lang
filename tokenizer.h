@@ -20,11 +20,16 @@ typedef struct Token {
         T_BITXOR,
         T_ASTERISK,
         T_COMMA,
+        T_ASSIGN,
         T_GT,
         T_AS,
+        T_IF,
+        T_ELSE,
         T_RETURN,
         T_FN,
+        T_VAR,
         T_IDENT,
+        T_LITERAL_STR,
         T_LITERAL_U8,
         T_LITERAL_U16,
         T_RARROW,
@@ -37,6 +42,7 @@ typedef struct Token {
     union {
         Str ident;
         int int_literal;
+        Str str_literal;
     };
 } Token;
 
