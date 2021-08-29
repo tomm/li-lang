@@ -75,12 +75,20 @@ fn main() {
     if (if 1 {0xcafe} else {0xdead}) == 0xcafe { pass() } else { fail_() };
     if (if 0 {0xcafe} else {0xdead}) == 0xdead { pass() } else { fail_() };
 
+    // local scopes
+    if local_scope_test(66) != 6 { fail_() } else { pass() };
+
+    // while loops
+    test_while();
+
+    // logical ops
+    //if 1 && 1 { pass() } else { fail_() };
+
     output_results();
 }
 
 /* Show passed tests in reg 'a', failed tests in 'b', total in 'c' */
 fn output_results() {
-    
     asm("
          ld a, [passes]
          ld hl, fails
@@ -89,3 +97,42 @@ fn output_results() {
          ld c, [hl]
          db $dd");
 }
+
+fn local_scope_test(a: u8) -> u8 {
+    var l1: u8;
+    var l2: u8;
+    var l3: [u16; 2];
+
+    // is stack screwed up?
+    if a != 66 { fail_() } else { pass() };
+    l1 = 4;
+    l2 = 1;
+    l3[0] = (l1 + l2) as u16;
+    l3[l2] = l3[0] + 1u16;
+
+    if l1 != 4 { fail_() } else { pass() };
+    if l2 != 1 { fail_() } else { pass() };
+    if l3[0] != 5u16 { fail_() } else { pass() };
+    if l3[l2] != 6u16 { fail_() } else { pass() };
+
+    l3[1] as u8
+}
+
+fn test_while() {
+    var i: u8;
+    var arr: [u8; 5];
+    i=0;
+
+    while i != 5 {
+        arr[i] = -i;
+        i = i + 1;
+    };
+
+    if i != 5 { fail_() } else { pass() };
+    if arr[0] != 0 { fail_() } else { pass() };
+    if arr[1] != -1 { fail_() } else { pass() };
+    if arr[2] != -2 { fail_() } else { pass() };
+    if arr[3] != -3 { fail_() } else { pass() };
+    if arr[4] != -4 { fail_() } else { pass() };
+}
+

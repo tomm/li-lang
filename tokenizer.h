@@ -20,6 +20,8 @@ typedef struct Token {
         T_BITAND,
         T_BITOR,
         T_BITXOR,
+        T_LOGICAL_AND,
+        T_LOGICAL_OR,
         T_ASTERISK,
         T_COMMA,
         T_ASSIGN,
@@ -37,6 +39,7 @@ typedef struct Token {
         T_LITERAL_U8,
         T_LITERAL_U16,
         T_RARROW,
+        T_WHILE,
         T_EOF
     } type;
 

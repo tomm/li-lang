@@ -1,14 +1,4 @@
-* local variables
-* local variable scopes
-* loops
-* arrays
+* more loops
+* rom constants
+* assignment on declaration
 * pointers
-
-typename syntax
-
-[u8; 10] = char[10]
-
-&u8 = u8*
-
-&[u8; 10] = char[10]
-[&u8; 10] = char*[10]

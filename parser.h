@@ -50,9 +50,22 @@ typedef struct AstNode {
                 EXPR_BUILTIN,
                 EXPR_CAST,
                 EXPR_IF_ELSE,
+                EXPR_LOCAL_SCOPE,
+                EXPR_WHILE_LOOP,
             } type;
 
             union {
+                struct {
+                    Str var_name;
+                    TypeId var_type;
+                    NodeIdx scoped_expr;
+                } local_scope;
+
+                struct {
+                    NodeIdx condition;
+                    NodeIdx body;
+                } while_loop;
+
                 struct {
                     NodeIdx condition;
                     NodeIdx on_true;
@@ -76,11 +89,14 @@ typedef struct AstNode {
                         BUILTIN_BITAND,
                         BUILTIN_BITOR,
                         BUILTIN_BITXOR,
+                        BUILTIN_LOGICAL_AND,
+                        BUILTIN_LOGICAL_OR,
                         BUILTIN_MUL,
                         BUILTIN_ASSIGN,
                         BUILTIN_EQ,
                         BUILTIN_NEQ,
                         BUILTIN_ARRAY_INDEXING,
+                        BUILTIN_UNARY_NEG,
                     } op;
                 } builtin;
                 struct {
@@ -102,5 +118,7 @@ extern void init_parser();
 extern NodeIdx parse_module(TokenCursor *toks);
 extern void print_ast(NodeIdx nidx, int depth);
 AstNode *get_node(NodeIdx idx);
+// includes self
+extern int ast_node_sibling_size(NodeIdx n);
 
 #endif /* __PARSER_H */

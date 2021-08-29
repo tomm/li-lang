@@ -224,8 +224,34 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
     }
 }
 
+static NodeIdx parse_unary_expression(TokenCursor *toks) {
+    const Token *t = tok_peek(toks, 0, true);
+
+    if (t->type == T_MINUS) {
+        chomp(toks, T_MINUS);
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, parse_postfix_expression(toks));
+
+        NodeIdx n = alloc_node();
+        set_node(n, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = BUILTIN_UNARY_NEG,
+                    .first_arg = args.first_child,
+                }
+            }
+        });
+        return n;
+    } else {
+        return parse_postfix_expression(toks);
+    }
+}
+
 static NodeIdx parse_cast_expression(TokenCursor *toks) {
-    NodeIdx n = parse_postfix_expression(toks);
+    NodeIdx n = parse_unary_expression(toks);
 
     while (tok_peek(toks, 0, true)->type == T_AS) {
         const Token *start_token = chomp(toks, T_AS);
@@ -315,8 +341,37 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
     return n;
 }
 
-static NodeIdx parse_comparison_expression(TokenCursor *toks) {
+static NodeIdx parse_logical_expression(TokenCursor *toks) {
     NodeIdx n = parse_additive_expression(toks);
+
+    while (tok_peek(toks, 0, true)->type == T_LOGICAL_OR ||
+           tok_peek(toks, 0, true)->type == T_LOGICAL_AND
+    ) {
+        const Token *t = tok_next(toks, true);
+
+        ChildCursor args = ChildCursor_init();
+        ChildCursor_append(&args, n);
+        ChildCursor_append(&args, parse_additive_expression(toks));
+        
+        n = alloc_node();
+        set_node(n, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_BUILTIN,
+                .builtin = {
+                    .op = t->type == T_LOGICAL_OR ? BUILTIN_LOGICAL_OR : BUILTIN_LOGICAL_AND,
+                    .first_arg = args.first_child
+                }
+            }
+        });
+    }
+
+    return n;
+}
+
+static NodeIdx parse_comparison_expression(TokenCursor *toks) {
+    NodeIdx n = parse_logical_expression(toks);
 
     while (tok_peek(toks, 0, true)->type == T_EQ ||
            tok_peek(toks, 0, true)->type == T_NEQ
@@ -325,7 +380,7 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_additive_expression(toks));
+        ChildCursor_append(&args, parse_logical_expression(toks));
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -345,7 +400,28 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
 }
 
 static NodeIdx parse_conditional_expression(TokenCursor *toks) {
-    if (tok_peek(toks, 0, true)->type == T_IF) {
+    if (tok_peek(toks, 0, true)->type == T_WHILE) {
+        const Token *t = chomp(toks, T_WHILE);
+        NodeIdx condition = parse_expression(toks);
+        chomp(toks, T_LBRACE);
+        NodeIdx body = parse_list_expression(toks);
+        chomp(toks, T_RBRACE);
+
+        NodeIdx while_loop = alloc_node();
+        set_node(while_loop, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_WHILE_LOOP,
+                .while_loop = {
+                    .condition = condition,
+                    .body = body,
+                }
+            }
+        });
+
+        return while_loop;
+    } else if (tok_peek(toks, 0, true)->type == T_IF) {
         const Token *t = chomp(toks, T_IF);
 
         NodeIdx condition = parse_expression(toks);
@@ -414,6 +490,36 @@ static NodeIdx parse_expression(TokenCursor *toks) {
     return parse_assignment_expression(toks);
 }
 
+static TypeId parse_type(TokenCursor *toks);
+
+static NodeIdx parse_localscope_expression(TokenCursor *toks) {
+    if (tok_peek(toks, 0, true)->type == T_VAR) {
+        const Token *start_token = chomp(toks, T_VAR);
+        const Token *name = chomp(toks, T_IDENT);
+        chomp(toks, T_COLON);
+        TypeId type = parse_type(toks);
+        chomp(toks, T_SEMICOLON);
+        NodeIdx scoped_expr = parse_list_expression(toks);
+
+        NodeIdx scope = alloc_node();
+        set_node(scope, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = start_token,
+            .expr = {
+                .type = EXPR_LOCAL_SCOPE,
+                .local_scope = {
+                    .var_name = name->ident,
+                    .var_type = type,
+                    .scoped_expr = scoped_expr,
+                }
+            }
+        });
+        return scope;
+    } else {
+        return parse_expression(toks);
+    }
+}
+
 static NodeIdx parse_list_expression(TokenCursor *toks) {
     ChildCursor exprs = ChildCursor_init();
     
@@ -421,7 +527,7 @@ static NodeIdx parse_list_expression(TokenCursor *toks) {
     bool is_void = false;
 
     while (tok_peek(toks, 0, true)->type != T_RBRACE) {
-        ChildCursor_append(&exprs, parse_expression(toks));
+        ChildCursor_append(&exprs, parse_localscope_expression(toks));
         is_void = false;
         if (tok_peek(toks, 0, true)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
@@ -623,7 +729,12 @@ done:
 }
 
 static void _indent(int depth) {
-    for (int i=0; i<depth; ++i) { putchar(' '); }
+    for (int i=0; i<depth*2; ++i) { putchar(' '); }
+}
+
+int ast_node_sibling_size(NodeIdx n) {
+    if (n == 0) return 0;
+    else return 1 + ast_node_sibling_size(get_node(n)->next_sibling);
 }
 
 void print_ast(NodeIdx nidx, int depth) {
@@ -664,7 +775,7 @@ void print_ast(NodeIdx nidx, int depth) {
             _indent(depth);
             {
                 const Type *type = get_type(node->var_def.type);
-                printf("def var %.*s of type %.*s\n",
+                printf("global var %.*s: %.*s\n",
                         (int)node->var_def.name.len, node->var_def.name.s,
                         (int)type->name.len, type->name.s);
             }
@@ -672,6 +783,15 @@ void print_ast(NodeIdx nidx, int depth) {
         case AST_EXPR:
             _indent(depth+1);
             switch (node->expr.type) {
+                case EXPR_LOCAL_SCOPE:
+                    {
+                        const Type *type = get_type(node->expr.local_scope.var_type);
+                        printf("localscope var %.*s: %.*s\n",
+                                (int)node->expr.local_scope.var_name.len, node->expr.local_scope.var_name.s,
+                                (int)type->name.len, type->name.s);
+                        print_ast(node->expr.local_scope.scoped_expr, depth+1);
+                    }
+                    break;
                 case EXPR_LIST:
                     printf("expr_list\n");
                     for (NodeIdx child=node->expr.list.first_child; child != 0; child = get_node(child)->next_sibling) {
@@ -694,6 +814,15 @@ void print_ast(NodeIdx nidx, int depth) {
                     break;
                 case EXPR_LITERAL_VOID:
                     printf("literal void\n");
+                    break;
+                case EXPR_WHILE_LOOP:
+                    printf("while\n");
+                    _indent(depth+2);
+                    printf("condition\n");
+                    print_ast(node->expr.while_loop.condition, depth+2);
+                    _indent(depth+2);
+                    printf("body\n");
+                    print_ast(node->expr.while_loop.body, depth+2);
                     break;
                 case EXPR_IF_ELSE:
                     printf("if\n");

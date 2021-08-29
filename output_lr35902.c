@@ -129,22 +129,66 @@ typedef struct StackVar {
     TypeId type;
     Str ident;
     int offset; // from SP on function entry
+    bool is_fn_arg; // false = local
 } StackVar;
 
 typedef struct StackFrame {
     int num_vars;
     int stack_offset;
+    int locals_top; // stack offset to next allocated local variable
 } StackFrame;
 
 Vec /*<StackVar>*/ _stack_vars;
 
-/* base pointer (bp) is implicit. we only really have a stack pointer */
-static StackVarIdx alloc_var() {
+const StackVar *lookup_stack_var(Str ident, StackFrame frame)
+{
+    for (int i=0; i<frame.num_vars; ++i) {
+        const StackVar *var = vec_get(&_stack_vars, i);
+        if (Str_eq2(ident, var->ident)) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
+const AstNode *lookup_global_var(Str name)
+{
+    // XXX assumes root of AST is index 0
+    AstNode *mod = get_node(0);
+
+    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
+        AstNode *child = get_node(i);
+        if (child->type != AST_DEF_VAR) continue;
+        if (Str_eq2(child->var_def.name, name)) return child;
+    }
+    return NULL;
+}
+
+/*
+static StackVarIdx alloc_stack_var() {
     StackVar v;
     memset(&v, 0, sizeof(StackVar));
     StackVarIdx idx = _stack_vars.len;
     vec_push(&_stack_vars, &v);
     return idx;
+}
+
+*/
+/* base pointer (bp) is implicit. we only really have a stack pointer */
+static StackVarIdx alloc_stack_var(const Token *t, StackFrame frame, StackVar v) {
+    if (lookup_stack_var(v.ident, frame) == NULL) {
+        StackVarIdx idx = _stack_vars.len;
+        vec_push(&_stack_vars, &v);
+        return idx;
+    } else {
+        fatal_error(t, "Local variable called '%.*s' already defined",
+                (int)v.ident.len, v.ident.s);
+    }
+}
+
+static void unalloc_stack_var() {
+    StackVar v;
+    vec_pop(&_stack_vars, &v);
 }
 
 static StackVar *get_stack_var(StackVarIdx idx) {
@@ -256,7 +300,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame);
 
 static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
     // v1 on stack, v2 as tmp (active Value)
-
+    
     if (op == BUILTIN_ASSIGN) {
         v2 = emit_value_to_register(v2, true);   // v2 in `b`
         v1 = emit_pop(v1, frame, false);
@@ -430,45 +474,102 @@ static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
     return (Value) { .typeId = U16, .storage = ST_REG_VAL };
 }
 
+/*
+ * nice idea, but we need to emit too much before we know the types...
+ *
+typedef struct BuiltinImpl {
+    enum BuiltinOp op;
+    TypeId arg1, arg2;
+    Value (*emit)(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2);
+} BuiltinImpl;
+
+Value emit_add_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+}
+
+static BuiltinImpl builtin_impls[] = {
+    { BUILTIN_ADD, U8, U8, emit_add_u8 }
+};
+*/
+
 static Value emit_builtin(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
 
+    const int n_args = ast_node_sibling_size(n->expr.builtin.first_arg);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    assert(arg1->next_sibling != 0);
 
-    Value v1 = emit_expression(n->expr.builtin.first_arg, frame);
-    emit_push(arg1, v1, &frame);
-    Value v2 = emit_expression(arg1->next_sibling, frame);
+    Value v1;
+    Value v2;
 
-    // typecheck the builtin op
-    //
-    if (n->expr.builtin.op == BUILTIN_ARRAY_INDEXING) {
-        if (get_type(v1.typeId)->type != TYPE_ARRAY) {
-            fatal_error(n->start_token, "Array index on non-array type '%.*s'",
-                    (int)get_type(v1.typeId)->name.len,
-                    get_type(v1.typeId)->name.s);
+    if (n_args == 1) {
+        // unary operator
+        v1 = emit_expression(n->expr.builtin.first_arg, frame);
+
+        switch (n->expr.builtin.op) {
+            case BUILTIN_UNARY_NEG:
+                if (v1.typeId == U8) {
+                    v1 = emit_value_to_register(v1, true);   // v1 in `b`
+                    _i("xor a");
+                    _i("sub a, b");
+                    v1 = (Value) { .typeId = U8, .storage = ST_REG_VAL };
+                }
+                else if (v1.typeId == U16) {
+                    v1 = emit_value_to_register(v1, false); // v1 in `hl`
+                    _i("xor a");
+                    _i("sub a, l");
+                    _i("ld l, a");
+                    _i("xor a");
+                    _i("sbc a, h");
+                    _i("ld h, a");
+                    v1 = (Value) { .typeId = U16, .storage = ST_REG_VAL };
+                }
+                else {
+                    fatal_error(n->start_token, "Invalid argument type '%.*s' to unary negative",
+                            (int)get_type(v1.typeId)->name.len,
+                            get_type(v1.typeId)->name.s);
+                }
+                break;
+            default:
+                assert(false);
         }
-        if (v2.typeId != U16 && v2.typeId != U8) {
-            fatal_error(n->start_token, "Array index must be u8 or u16 type");
-        }
+        return v1;
     }
-    else {    
-        // binary operators
-        if (!is_type_eq(v2.typeId, v1.typeId)) {
-            fatal_error(n->start_token, "builtin operator expects same types. found %.*s and %.*s",
-                    (int)get_type(v2.typeId)->name.len,
-                    get_type(v2.typeId)->name.s,
-                    (int)get_type(v1.typeId)->name.len,
-                    get_type(v1.typeId)->name.s);
+    else if (n_args == 2) {
+        // binary operator
+        v1 = emit_expression(n->expr.builtin.first_arg, frame);
+        emit_push(arg1, v1, &frame);
+        v2 = emit_expression(arg1->next_sibling, frame);
+
+        // typecheck the builtin op
+        //
+        if (n->expr.builtin.op == BUILTIN_ARRAY_INDEXING) {
+            if (get_type(v1.typeId)->type != TYPE_ARRAY) {
+                fatal_error(n->start_token, "Array index on non-array type '%.*s'",
+                        (int)get_type(v1.typeId)->name.len,
+                        get_type(v1.typeId)->name.s);
+            }
+            if (v2.typeId != U16 && v2.typeId != U8) {
+                fatal_error(n->start_token, "Array index must be u8 or u16 type");
+            }
         }
-    }
+        else {    
+            // binary operators
+            if (!is_type_eq(v2.typeId, v1.typeId)) {
+                fatal_error(n->start_token, "builtin operator expects same types. found %.*s and %.*s",
+                        (int)get_type(v2.typeId)->name.len,
+                        get_type(v2.typeId)->name.s,
+                        (int)get_type(v1.typeId)->name.len,
+                        get_type(v1.typeId)->name.s);
+            }
+        }
 
-
-    switch (v2.typeId) {
-        case U8: return emit_builtin_u8(call, &frame, n->expr.builtin.op, v1, v2);
-        case U16: return emit_builtin_u16(call, &frame, n->expr.builtin.op, v1, v2);
-        default: assert(false);
+        switch (v2.typeId) {
+            case U8: return emit_builtin_u8(call, &frame, n->expr.builtin.op, v1, v2);
+            case U16: return emit_builtin_u16(call, &frame, n->expr.builtin.op, v1, v2);
+            default: assert(false);
+        }
+    } else {
+        assert(false);
     }
 }
 
@@ -528,12 +629,6 @@ static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg
                 (int)expected_type->name.len,
                 expected_type->name.s);
     }
-}
-
-// includes self
-static int ast_node_sibling_size(NodeIdx n) {
-    if (n == 0) return 0;
-    else return 1 + ast_node_sibling_size(get_node(n)->next_sibling);
 }
 
 static const AstNode *lookup_fn(Str name) {
@@ -597,28 +692,39 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
     }
 }
 
-const StackVar *lookup_stack_var(Str ident, StackFrame frame)
+static void emit_truthy_test_to_zflag(const Token *t, Value v)
 {
-    for (int i=0; i<frame.num_vars; ++i) {
-        const StackVar *var = vec_get(&_stack_vars, i);
-        if (Str_eq2(ident, var->ident)) {
-            return var;
-        }
+    if (v.typeId == U8) {
+        emit_value_to_register(v, false);  // to 'a' register
+        _i("and a, a");
+    } else if (v.typeId == U16) {
+        emit_value_to_register(v, false);  // to 'hl' register
+        _i("ld a, l");
+        _i("or a, h");
+    } else {
+        fatal_error(t, "Type '%.*s' cannot be evaluated for truthyness",
+                (int)get_type(v.typeId)->name.len,
+                get_type(v.typeId)->name.s);
     }
-    return NULL;
 }
 
-const AstNode *lookup_global_var(Str name)
-{
-    // XXX assumes root of AST is index 0
-    AstNode *mod = get_node(0);
+static Value emit_while_loop(NodeIdx expr, StackFrame frame) {
+    AstNode *n = get_node(expr);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_WHILE_LOOP);
 
-    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
-        AstNode *child = get_node(i);
-        if (child->type != AST_DEF_VAR) continue;
-        if (Str_eq2(child->var_def.name, name)) return child;
-    }
-    return NULL;
+    const int start_label = _local_label_seq++;
+    const int end_label = _local_label_seq++;
+
+    _label(start_label);
+
+    Value condition = emit_expression(n->expr.while_loop.condition, frame);
+    emit_truthy_test_to_zflag(get_node(n->expr.while_loop.condition)->start_token, condition);
+    _i("jp z, .l%d", end_label);
+    /*Value body =*/ emit_expression(n->expr.while_loop.body, frame);
+    _i("jp .l%d", start_label);
+    _label(end_label);
+
+    return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
 }
 
 static Value emit_if_else(NodeIdx expr, StackFrame frame) {
@@ -630,21 +736,8 @@ static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     const int else_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
 
-    if (condition.typeId == U8) {
-        condition = emit_value_to_register(condition, false);  // to 'a' register
-        _i("and a, a");
-        _i("jp z, .l%d", else_label);
-    }
-    else if (condition.typeId == U16) {
-        condition = emit_value_to_register(condition, false);  // to 'hl' register
-        _i("ld a, l");
-        _i("or a, h");
-        _i("jp z, .l%d", else_label);
-    } else {
-        fatal_error(n->start_token, "Invalid condition type in if expression. Expected u8 or u16, but found %.*s",
-                (int)get_type(condition.typeId)->name.len,
-                get_type(condition.typeId)->name.s);
-    }
+    emit_truthy_test_to_zflag(get_node(n->expr.if_else.condition)->start_token, condition);
+    _i("jp z, .l%d", else_label);
 
     Value on_true = emit_expression(n->expr.if_else.on_true, frame);
 
@@ -682,7 +775,7 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     if (var) {
         // bytes are pushed onto the stack as 2 bytes (push af), meaning there is an additional
         // offset of 1 to get to the byte corresponding to 'a', rather than the 'f' garbage...
-        const int type_weirdness_offset = var->type == U8 ? 1 : 0;
+        const int type_weirdness_offset = var->is_fn_arg ? get_type(var->type)->stack_offset : 0;
 
         _i("ld hl, sp%+d", var->offset + frame.stack_offset + type_weirdness_offset);
         return (Value) { .typeId = var->type, .storage = ST_REG_EA };
@@ -697,6 +790,23 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     }
 
     fatal_error(n->start_token, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
+}
+
+static Value emit_local_scope(NodeIdx scope, StackFrame frame) {
+    const AstNode *n = get_node(scope);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_LOCAL_SCOPE);
+
+    StackVarIdx var = alloc_stack_var(n->start_token, frame, (StackVar) {
+        .type = n->expr.local_scope.var_type,
+        .ident = n->expr.local_scope.var_name,
+        .offset = frame.locals_top,
+        .is_fn_arg = false
+    });
+    frame.locals_top += get_type(n->expr.local_scope.var_type)->size;
+    frame.num_vars++;
+    Value v = emit_expression(get_node(scope)->expr.local_scope.scoped_expr, frame);
+    unalloc_stack_var();
+    return v;
 }
 
 static Value emit_expression(NodeIdx expr, StackFrame frame) {
@@ -732,6 +842,10 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_cast(expr, frame);
         case EXPR_IF_ELSE:
             return emit_if_else(expr, frame);
+        case EXPR_WHILE_LOOP:
+            return emit_while_loop(expr, frame);
+        case EXPR_LOCAL_SCOPE:
+            return emit_local_scope(expr, frame);
         default:
             assert(false);
     }
@@ -750,39 +864,106 @@ static void record_def_var(NodeIdx def_var) {
     });
 }
 
+int max(int a, int b) { return a>b?a:b; }
+
+static int get_max_local_vars_size(NodeIdx n)
+{
+    const AstNode *node = get_node(n);
+
+    assert(node->type == AST_EXPR);
+
+    int size = 0;
+
+    switch (node->expr.type) {
+        case EXPR_LOCAL_SCOPE:
+            size = get_type(node->expr.local_scope.var_type)->size +
+                   get_max_local_vars_size(node->expr.local_scope.scoped_expr);
+            break;
+        case EXPR_IF_ELSE:
+            size = max(size, get_max_local_vars_size(node->expr.if_else.condition));
+            size = max(size, get_max_local_vars_size(node->expr.if_else.on_true));
+            size = max(size, get_max_local_vars_size(node->expr.if_else.on_false));
+            break;
+        case EXPR_LIST:
+            for (int c=node->expr.list.first_child; c!=0; c=get_node(c)->next_sibling) {
+                size = max(size, get_max_local_vars_size(c));
+            }
+            break;
+        case EXPR_IDENT:
+        case EXPR_LITERAL_U8:
+        case EXPR_LITERAL_U16:
+        case EXPR_LITERAL_STR:
+        case EXPR_LITERAL_VOID:
+            break;
+        case EXPR_CALL:
+            for (int c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {
+                size = max(size, get_max_local_vars_size(c));
+            }
+            break;
+        case EXPR_BUILTIN:
+            for (int c=node->expr.builtin.first_arg; c!=0; c=get_node(c)->next_sibling) {
+                size = max(size, get_max_local_vars_size(c));
+            }
+            break;
+        case EXPR_CAST:
+            size = max(size, get_max_local_vars_size(node->expr.cast.arg));
+            break;
+    }
+    return size;
+}
+
 static Value emit_fn(NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
     assert(fn_node->type == AST_FN);
 
     __("%.*s:", (int)fn_node->fn.name.len, fn_node->fn.name.s);
 
+    /* Allocate enough stack space for the maximum local
+     * scope size of this function (requires walking the function
+     * body expression tree to find local scopes */
+    const int local_vars_bytes = get_max_local_vars_size(fn_node->fn.body);
+
+    // because of instruction used to make stack space... XXX
+    assert(local_vars_bytes < 128);
+
+    if (local_vars_bytes) {
+        _i("add sp, %d", -local_vars_bytes);
+    }
+
     vec_zero(&_stack_vars);
 
     // build stackframe of fn arguments
     int bp_offset = 2; // return address at 0(sp), 1(sp)
+    bp_offset += local_vars_bytes;
+
+    StackFrame frame = { .num_vars = 0, .stack_offset = 0, .locals_top = 0 };
+
     for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
         assert(get_node(arg)->type == AST_FN_ARG);
         
         TypeId argtype = get_node(arg)->fn_arg.type;
 
-        StackVarIdx v = alloc_var();
-        *get_stack_var(v) = (StackVar) {
+        StackVarIdx v = alloc_stack_var(get_node(arg)->start_token, frame, (StackVar) {
             .type = argtype,
             .ident = get_node(arg)->fn_arg.name,
-            .offset = bp_offset
-        };
+            .offset = bp_offset,
+            .is_fn_arg = true
+        });
         bp_offset += get_type(argtype)->stack_size;
+        frame.num_vars++;
     }
 
     for (int i=0; i<_stack_vars.len; ++i) {
         StackVar *v = get_stack_var(i);
         fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
     }
-
-    StackFrame frame = { .num_vars = _stack_vars.len, .stack_offset = 0 };
     
     Value ret_val = emit_expression(fn_node->fn.body, frame);
     emit_value_to_register(ret_val, false);
+
+    if (local_vars_bytes) {
+        _i("add sp, %d", local_vars_bytes);
+    }
     _i("ret");
 
     if (!is_type_eq(fn_node->fn.ret, ret_val.typeId)) {

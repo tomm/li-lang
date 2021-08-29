@@ -18,6 +18,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_BITAND: return "&";
         case T_BITOR: return "|";
         case T_BITXOR: return "^";
+        case T_LOGICAL_AND: return "&&";
+        case T_LOGICAL_OR: return "||";
         case T_FN: return "fn";
         case T_VAR: return "var";
         case T_ASSIGN: return "=";
@@ -35,6 +37,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_IF: return "if";
         case T_ELSE: return "else";
         case T_RARROW: return "->";
+        case T_WHILE: return "while";
         case T_EOF: return "end-of-file";
         default: assert(false);
     }
@@ -48,7 +51,7 @@ Vec lex(Str buf) {
     int line = 1;
     int col = 1;
 
-#define NEXT() { ++pos; ++col; }
+#define NEXT() { if (*pos == '\n') { line++; col = 1; ++pos; } else { ++pos; ++col; } }
 #define EMIT(token) { vec_push(&tokens, &(token)); }
 #define LOOK_AHEAD() (pos < end-1 ? *(pos+1) : 0)
 #define LOOK_AHEAD2() (pos < end-2 ? *(pos+2) : 0)
@@ -65,7 +68,9 @@ Vec lex(Str buf) {
         else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col })); NEXT(); NEXT(); }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col })); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col })); NEXT(); }
+        else if ((*pos == '&') && LOOK_AHEAD() == '&') { EMIT(((Token) { T_LOGICAL_AND, line, col })); NEXT(); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_BITAND, line, col })); NEXT(); }
+        else if ((*pos == '|') && LOOK_AHEAD() == '|') { EMIT(((Token) { T_LOGICAL_OR, line, col })); NEXT(); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_BITOR, line, col })); NEXT(); }
         else if (*pos == '^') { EMIT(((Token) { T_BITXOR, line, col })); NEXT(); }
         else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col })); NEXT(); NEXT(); }
@@ -136,6 +141,8 @@ Vec lex(Str buf) {
                 EMIT(((Token) { T_IF, t.line, t.col }));
             } else if (Str_eq(t.ident, "else")) {
                 EMIT(((Token) { T_ELSE, t.line, t.col }));
+            } else if (Str_eq(t.ident, "while")) {
+                EMIT(((Token) { T_WHILE, t.line, t.col }));
             } else {
                 EMIT(t);
             }
@@ -185,13 +192,7 @@ Vec lex(Str buf) {
         }
         else if (isspace(*pos)) {
             while (isspace(*pos) && pos < end) {
-                if (*pos == '\n') {
-                    line++;
-                    col = 1;
-                    ++pos;
-                } else {
-                    NEXT();
-                }
+                NEXT();
             }
             EMIT(((Token) { T_SPACE, line, col }));
         }
