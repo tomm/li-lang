@@ -311,7 +311,7 @@ static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     }
 
     if (op == BUILTIN_ARRAY_INDEXING) {
-        assert(get_type(v1.typeId)->type == TYPE_ARRAY);
+        assert(get_type(v1.typeId)->type == TT_ARRAY);
         assert(v1.storage == ST_REG_EA);
         const Type *contained = get_type(get_type(v1.typeId)->array.contained);
 
@@ -473,19 +473,23 @@ static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
 }
 
 /*
- * nice idea, but we need to emit too much before we know the types...
- *
 typedef struct BuiltinImpl {
     enum BuiltinOp op;
-    TypeId arg1, arg2;
+    enum TypeType tt1, tt2;
     Value (*emit)(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2);
 } BuiltinImpl;
 
-Value emit_add_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *arg1 = get_node(get_node(expr)->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+}
+
+Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
 }
 
 static BuiltinImpl builtin_impls[] = {
-    { BUILTIN_ADD, U8, U8, emit_add_u8 }
+    { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
 };
 */
 

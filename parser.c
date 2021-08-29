@@ -592,7 +592,7 @@ static TypeId parse_type(TokenCursor *toks) {
         char *type_name = strdup(buf);
 
         return add_type((Type) {
-            .type = TYPE_ARRAY,
+            .type = TT_ARRAY,
             .name = { .s = type_name, .len = strlen(type_name) },
             .size = byte_size,
             .stack_size = byte_size,

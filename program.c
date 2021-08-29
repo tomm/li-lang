@@ -23,7 +23,7 @@ static void collect_symbols(Program *prog) {
                 .size = 0,
                 .stack_size = 0,
                 .stack_offset = 0,
-                .type = TYPE_FUNC,
+                .type = TT_FUNC,
                 .func = {
                     .args = vec_init(sizeof(TypeId))
                 }
@@ -86,7 +86,7 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
                 TypeId arr = typecheck_expr(prog, scope, n->expr.builtin.first_arg);
                 TypeId idx = typecheck_expr(prog, scope, get_node(n->expr.builtin.first_arg)->next_sibling);
 
-                if (get_type(arr)->type != TYPE_ARRAY) {
+                if (get_type(arr)->type != TT_ARRAY) {
                     fatal_error(n->start_token, "Array index on non-array type '%.*s'",
                             (int)get_type(arr)->name.len,
                             get_type(arr)->name.s);

@@ -13,11 +13,14 @@ typedef struct Type {
     int stack_offset; /* when pushed to stack, when does data actually begin? */
 
     enum TypeType {
-        TYPE_PRIM,
-        TYPE_ARRAY,
-        TYPE_FUNC,
-        // TYPE_PTR,
-        // TYPE_STRUCT
+        TT_UNKNOWN,
+        TT_PRIM_VOID,
+        TT_PRIM_U8,
+        TT_PRIM_U16,
+        TT_ARRAY,
+        TT_FUNC,
+        // TT_PTR,
+        // TT_STRUCT
     } type;
 
     union {
