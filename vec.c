@@ -61,7 +61,7 @@ void vec_push(Vec *v, const void *elem) {
 void vec_pop(Vec *v, void *popped) {
     assert(v->len > 0);
     v->len--;
-    memcpy(popped, vec_get(v, v->len), v->elem_size);
+    if (popped) memcpy(popped, vec_get(v, v->len), v->elem_size);
 }
 
 void vec_zero(Vec *v) {

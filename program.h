@@ -8,6 +8,7 @@
 typedef struct Symbol {
     Str name;
     NodeIdx obj;
+    TypeId type;
 } Symbol;
 
 typedef struct Program {

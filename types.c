@@ -7,7 +7,7 @@
 
 static Vec/*<Type>*/ types;
 
-const Type *get_type(TypeId id) {
+Type *get_type(TypeId id) {
     return vec_get(&types, id);
 }
 
@@ -75,8 +75,8 @@ void init_types() {
 }
 
 bool is_type_eq(TypeId a, TypeId b) {
-    const Type *ta = get_type(a);
-    const Type *tb = get_type(b);
+    Type *ta = get_type(a);
+    Type *tb = get_type(b);
     switch (ta->type) {
         case TYPE_PRIM:
             return a == b;
@@ -84,5 +84,17 @@ bool is_type_eq(TypeId a, TypeId b) {
             return ta->size == tb->size &&
                    ta->type == tb->type &&
                    is_type_eq(ta->array.contained, tb->array.contained);
+        case TYPE_FUNC:
+            {
+                if (ta->func.args.len != tb->func.args.len) return false;
+                for (int i=0; i<ta->func.args.len; ++i) {
+                    if (!is_type_eq(
+                                *(TypeId*)vec_get(&ta->func.args, i),
+                                *(TypeId*)vec_get(&tb->func.args, i))) {
+                        return false;
+                    }
+                }
+                return true;
+            }
     }
 }

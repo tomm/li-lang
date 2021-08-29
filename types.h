@@ -2,6 +2,7 @@
 #define TYPES_H
 
 #include "str.h"
+#include "vec.h"
 
 typedef int TypeId;
 
@@ -14,13 +15,20 @@ typedef struct Type {
     enum TypeType {
         TYPE_PRIM,
         TYPE_ARRAY,
+        TYPE_FUNC,
         // TYPE_PTR,
         // TYPE_STRUCT
     } type;
 
-    struct {
-        TypeId contained;
-    } array;
+    union {
+        struct {
+            TypeId contained;
+        } array;
+
+        struct {
+            Vec /*<TypeId>*/ args;
+        } func;
+    };
 } Type;
 
 /* TypeId of primitive types (indexes in types vec) */
@@ -32,7 +40,7 @@ typedef struct Type {
 void init_types();
 TypeId add_type(Type t);
 TypeId lookup_type(Str name);
-const Type *get_type(TypeId id);
+Type *get_type(TypeId id);
 bool is_type_eq(TypeId a, TypeId b);
 
 #endif /* TYPES_H */

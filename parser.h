@@ -110,7 +110,7 @@ typedef struct AstNode {
 
                 struct {
                     NodeIdx arg;
-                    Str to_type;
+                    TypeId to_type;
                 } cast;
             };
         } expr;

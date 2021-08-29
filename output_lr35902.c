@@ -538,29 +538,6 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         emit_push(arg1, v1, &frame);
         v2 = emit_expression(arg1->next_sibling, frame);
 
-        // typecheck the builtin op
-        //
-        if (n->expr.builtin.op == BUILTIN_ARRAY_INDEXING) {
-            if (get_type(v1.typeId)->type != TYPE_ARRAY) {
-                fatal_error(n->start_token, "Array index on non-array type '%.*s'",
-                        (int)get_type(v1.typeId)->name.len,
-                        get_type(v1.typeId)->name.s);
-            }
-            if (v2.typeId != U16 && v2.typeId != U8) {
-                fatal_error(n->start_token, "Array index must be u8 or u16 type");
-            }
-        }
-        else {    
-            // binary operators
-            if (!is_type_eq(v2.typeId, v1.typeId)) {
-                fatal_error(n->start_token, "builtin operator expects same types. found %.*s and %.*s",
-                        (int)get_type(v2.typeId)->name.len,
-                        get_type(v2.typeId)->name.s,
-                        (int)get_type(v1.typeId)->name.len,
-                        get_type(v1.typeId)->name.s);
-            }
-        }
-
         switch (v2.typeId) {
             case U8: return emit_builtin_u8(call, &frame, n->expr.builtin.op, v1, v2);
             case U16: return emit_builtin_u16(call, &frame, n->expr.builtin.op, v1, v2);
@@ -575,7 +552,7 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     AstNode *n = get_node(cast);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
 
-    TypeId to_type = find_type(n, n->expr.cast.to_type);
+    TypeId to_type = n->expr.cast.to_type;
     Value v1 = emit_expression(n->expr.cast.arg, frame);
 
     if (v1.typeId == to_type) {
@@ -619,14 +596,7 @@ static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg
 
     const Type *expected_type = get_type(arg_type->fn_arg.type);
 
-    if (!is_type_eq(v.typeId, arg_type->fn_arg.type)) {
-        fatal_error(n->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
-                arg_num + 1,
-                (int)get_type(v.typeId)->name.len,
-                get_type(v.typeId)->name.s,
-                (int)expected_type->name.len,
-                expected_type->name.s);
-    }
+    assert (is_type_eq(v.typeId, arg_type->fn_arg.type));
 }
 
 static Value emit_call(NodeIdx call, StackFrame frame) {
@@ -651,20 +621,9 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
 
         const AstNode *fn = lookup_global_sym(callee->expr.ident);
 
-        if (fn == NULL) {
-            fatal_error(callee->start_token, "call to undefined function '%.*s'",
-                    (int)callee->expr.ident.len, callee->expr.ident.s);
-        }
-        if (fn->type != AST_FN) {
-            fatal_error(callee->start_token, "call to something that is not a function");
-        }
-        if (ast_node_sibling_size(fn->fn.first_arg) !=
-            ast_node_sibling_size(n->expr.call.first_arg)) {
-            fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
-                    (int)callee->expr.ident.len, callee->expr.ident.s,
-                    ast_node_sibling_size(fn->fn.first_arg),
-                    ast_node_sibling_size(n->expr.call.first_arg));
-        }
+        // actualy compile error emitted by program.c
+        assert(fn != NULL);
+        assert(fn->type == AST_FN);
 
         const int old_stack = frame.stack_offset;
         emit_call_push_args(0, fn->fn.first_arg, n->expr.call.first_arg, &frame);
@@ -838,7 +797,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_while_loop(expr, frame);
         case EXPR_LOCAL_SCOPE:
             return emit_local_scope(expr, frame);
-        default:
+        case EXPR_LITERAL_STR:
             assert(false);
     }
     return v;
@@ -900,6 +859,10 @@ static int get_max_local_vars_size(NodeIdx n)
         case EXPR_CAST:
             size = max(size, get_max_local_vars_size(node->expr.cast.arg));
             break;
+        case EXPR_WHILE_LOOP:
+            size = max(size, get_max_local_vars_size(node->expr.while_loop.condition));
+            size = max(size, get_max_local_vars_size(node->expr.while_loop.body));
+            break;
     }
     return size;
 }
@@ -951,6 +914,9 @@ static Value emit_fn(NodeIdx fn) {
     }
     
     Value ret_val = emit_expression(fn_node->fn.body, frame);
+    // Typecheck should have been done in program.c
+    assert(is_type_eq(fn_node->fn.ret, ret_val.typeId));
+
     emit_value_to_register(ret_val, false);
 
     if (local_vars_bytes) {
@@ -958,15 +924,6 @@ static Value emit_fn(NodeIdx fn) {
     }
     _i("ret");
 
-    if (!is_type_eq(fn_node->fn.ret, ret_val.typeId)) {
-        fatal_error(fn_node->start_token, "function %.*s returned %.*s but should return %.*s",
-                (int)fn_node->fn.name.len,
-                fn_node->fn.name.s,
-                (int)get_type(ret_val.typeId)->name.len,
-                get_type(ret_val.typeId)->name.s,
-                (int)get_type(fn_node->fn.ret)->name.len,
-                get_type(fn_node->fn.ret)->name.s);
-    }
 
     return ret_val;
 }

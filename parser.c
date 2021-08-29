@@ -89,6 +89,7 @@ static bool check(TokenCursor *toks, enum TokType type) {
     return tok_peek(toks, 0, true)->type == type;
 }
 
+static TypeId parse_type(TokenCursor *toks);
 static NodeIdx parse_expression(TokenCursor *toks);
 static NodeIdx parse_list_expression(TokenCursor *toks);
 
@@ -255,7 +256,7 @@ static NodeIdx parse_cast_expression(TokenCursor *toks) {
 
     while (tok_peek(toks, 0, true)->type == T_AS) {
         const Token *start_token = chomp(toks, T_AS);
-        const Token *ident = chomp(toks, T_IDENT);
+        TypeId to_type = parse_type(toks);
 
         NodeIdx child = n;
         n = alloc_node();
@@ -266,7 +267,7 @@ static NodeIdx parse_cast_expression(TokenCursor *toks) {
                 .type = EXPR_CAST,
                 .cast = {
                     .arg = child,
-                    .to_type = ident->ident
+                    .to_type = to_type
                 }
             }
         });
@@ -489,8 +490,6 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
 static NodeIdx parse_expression(TokenCursor *toks) {
     return parse_assignment_expression(toks);
 }
-
-static TypeId parse_type(TokenCursor *toks);
 
 static NodeIdx parse_localscope_expression(TokenCursor *toks) {
     if (tok_peek(toks, 0, true)->type == T_VAR) {
@@ -856,10 +855,11 @@ void print_ast(NodeIdx nidx, int depth) {
                     }
                     break;
                 case EXPR_CAST:
-                    printf("cast (as %.*s)\n",
-                            (int)node->expr.cast.to_type.len,
-                            node->expr.cast.to_type.s);
-                    print_ast(node->expr.cast.arg, depth+2);
+                    {
+                        Str name = get_type(node->expr.cast.to_type)->name;
+                        printf("cast (as %.*s)\n", (int)name.len, name.s);
+                        print_ast(node->expr.cast.arg, depth+2);
+                    }
                     break;
             }
             break;
