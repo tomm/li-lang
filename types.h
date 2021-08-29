@@ -24,9 +24,10 @@ typedef struct Type {
 } Type;
 
 /* TypeId of primitive types (indexes in types vec) */
-#define VOID    0
-#define U8      1
-#define U16     2
+#define TYPE_UNKNOWN 0 // used by AST before expression nodes have a known type
+#define VOID    1
+#define U8      2
+#define U16     3
 
 void init_types();
 TypeId add_type(Type t);

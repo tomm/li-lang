@@ -8,6 +8,7 @@
 #include "types.h"
 #include "error.h"
 
+static Program *program;
 static FILE *output;
 static int _local_label_seq = 0;
 
@@ -151,17 +152,14 @@ const StackVar *lookup_stack_var(Str ident, StackFrame frame)
     return NULL;
 }
 
-const AstNode *lookup_global_var(Str name)
+const AstNode *lookup_global_sym(Str name)
 {
-    // XXX assumes root of AST is index 0
-    AstNode *mod = get_node(0);
-
-    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
-        AstNode *child = get_node(i);
-        if (child->type != AST_DEF_VAR) continue;
-        if (Str_eq2(child->var_def.name, name)) return child;
+    Symbol *sym = lookup_program_symbol(program, name);
+    if (sym) {
+        return get_node(sym->obj);
+    } else {
+        return NULL;
     }
-    return NULL;
 }
 
 /*
@@ -631,18 +629,6 @@ static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg
     }
 }
 
-static const AstNode *lookup_fn(Str name) {
-    // XXX assumes root of AST is index 0
-    AstNode *mod = get_node(0);
-
-    for (int i=mod->module.first_child; i!=0; i=get_node(i)->next_sibling) {
-        AstNode *child = get_node(i);
-        if (child->type != AST_FN) continue;
-        if (Str_eq2(child->fn.name, name)) return child;
-    }
-    return NULL;
-}
-
 static Value emit_call(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
@@ -663,11 +649,14 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
             return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         }
 
-        const AstNode *fn = lookup_fn(callee->expr.ident);
+        const AstNode *fn = lookup_global_sym(callee->expr.ident);
 
         if (fn == NULL) {
             fatal_error(callee->start_token, "call to undefined function '%.*s'",
                     (int)callee->expr.ident.len, callee->expr.ident.s);
+        }
+        if (fn->type != AST_FN) {
+            fatal_error(callee->start_token, "call to something that is not a function");
         }
         if (ast_node_sibling_size(fn->fn.first_arg) !=
             ast_node_sibling_size(n->expr.call.first_arg)) {
@@ -781,10 +770,13 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
         return (Value) { .typeId = var->type, .storage = ST_REG_EA };
     }
 
-    const AstNode *global = lookup_global_var(n->expr.ident);
+    const AstNode *global = lookup_global_sym(n->expr.ident);
 
     if (global) {
-        assert(global->type == AST_DEF_VAR);
+        if (global->type != AST_DEF_VAR) {
+            fatal_error(n->start_token, "%.*s is not a variable",
+                    (int)n->expr.ident.len, n->expr.ident.s);
+        }
         _i("ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
         return (Value) { .typeId = global->var_def.type, .storage = ST_REG_EA };
     }
@@ -993,12 +985,13 @@ static void init() {
     _ram_vars = vec_init(sizeof(RamVariable));
 }
 
-void output_lr35902(NodeIdx root) {
+void output_lr35902(Program *prog) {
     init();
 
+    program = prog;
     output = fopen("out.asm", "w");
 
-    AstNode *root_node = get_node(root);
+    AstNode *root_node = get_node(prog->root);
     assert(root_node->type == AST_MODULE);
 
     emit_boilerplate();

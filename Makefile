@@ -3,7 +3,7 @@
 
 default: lic
 
-objs=main.o parser.o tokenizer.o vec.o output_lr35902.o types.o error.o
+objs=main.o parser.o tokenizer.o vec.o output_lr35902.o types.o error.o program.o
 
 lic: $(objs)
 	gcc $(objs) -g -o lic

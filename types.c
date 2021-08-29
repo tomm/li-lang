@@ -38,6 +38,15 @@ void init_types() {
     types = vec_init(sizeof(Type));
 
     add_type((Type) {
+        /* TYPE_UNKNOWN */
+        .name = { .s = "unknown", .len = 7 },
+        .size = 0,
+        .stack_size = 0,
+        .stack_offset = 0,
+        .type = TYPE_PRIM
+    });
+
+    add_type((Type) {
         /* VOID */
         .name = { .s = "void", .len = 4 },
         .size = 0,

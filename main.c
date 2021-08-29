@@ -8,6 +8,7 @@
 #include "str.h"
 #include "parser.h"
 #include "tokenizer.h"
+#include "program.h"
 #include "output_lr35902.h"
 
 Str read_file(FILE *f) {
@@ -48,7 +49,9 @@ int main(int argc, char** argv) {
         const NodeIdx root = parse_module(&(TokenCursor) { .tokens = token_vec, .next = 0 });
         print_ast(root, 0);
 
-        output_lr35902(root);
+        Program prog = new_program(root);
+
+        output_lr35902(&prog);
 
         vec_free(&token_vec);
 

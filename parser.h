@@ -54,6 +54,8 @@ typedef struct AstNode {
                 EXPR_WHILE_LOOP,
             } type;
 
+            TypeId eval_type;
+
             union {
                 struct {
                     Str var_name;
@@ -71,16 +73,22 @@ typedef struct AstNode {
                     NodeIdx on_true;
                     NodeIdx on_false;
                 } if_else;
+
                 struct {
                     NodeIdx first_child;
                 } list;
+
                 Str ident;
+
                 int literal_int;
+
                 Str literal_str;
+
                 struct {
                     NodeIdx callee;
                     NodeIdx first_arg;
                 } call;
+
                 struct {
                     NodeIdx first_arg;
                     enum BuiltinOp {
@@ -99,6 +107,7 @@ typedef struct AstNode {
                         BUILTIN_UNARY_NEG,
                     } op;
                 } builtin;
+
                 struct {
                     NodeIdx arg;
                     Str to_type;
