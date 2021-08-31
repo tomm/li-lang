@@ -341,9 +341,9 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
 
     while (tok_peek(toks, 0)->type == T_PLUS ||
            tok_peek(toks, 0)->type == T_MINUS ||
-           tok_peek(toks, 0)->type == T_BITAND ||
-           tok_peek(toks, 0)->type == T_BITOR ||
-           tok_peek(toks, 0)->type == T_BITXOR
+           tok_peek(toks, 0)->type == T_AMPERSAND ||
+           tok_peek(toks, 0)->type == T_PIPE ||
+           tok_peek(toks, 0)->type == T_ACUTE
     ) {
         const Token *t = tok_next(toks);
 
@@ -361,9 +361,9 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
                     .op = (
                         t->type == T_PLUS ? BUILTIN_ADD
                         : t->type == T_MINUS ? BUILTIN_SUB
-                        : t->type == T_BITAND ? BUILTIN_BITAND
-                        : t->type == T_BITOR ? BUILTIN_BITOR
-                        : t->type == T_BITXOR ? BUILTIN_BITXOR
+                        : t->type == T_AMPERSAND ? BUILTIN_BITAND
+                        : t->type == T_PIPE ? BUILTIN_BITOR
+                        : t->type == T_ACUTE ? BUILTIN_BITXOR
                         : (abort(), BUILTIN_ADD)
                     ),
                     .first_arg = args.first_child
@@ -941,6 +941,9 @@ void print_ast(NodeIdx nidx, int depth) {
                     (int)get_type(node->expr.eval_type)->name.len,
                     get_type(node->expr.eval_type)->name.s);
             switch (node->expr.type) {
+                case EXPR_ASM:
+                    printf("inline asm\n");
+                    break;
                 case EXPR_LOCAL_SCOPE:
                     {
                         const Type *type = get_type(node->expr.local_scope.var_type);

@@ -87,6 +87,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
     AstNode *n = get_node(expr);
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
+        case EXPR_ASM:
+            t = VOID;
+            break;
         case EXPR_CAST:
             typecheck_expr(prog, scope, n->expr.cast.arg);
             t = n->expr.cast.to_type;
@@ -273,18 +276,17 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
     }
 
     TypeId returned = typecheck_expr(prog, &scope, fn_node->fn.body);
+    TypeId expected = get_type(fn_node->fn.type)->func.ret;
 
-    /*
-    if (!is_type_eq(fn_node->fn.ret, returned)) {
+    if (!is_type_eq(expected, returned)) {
         fatal_error(fn_node->start_token, "function %.*s returned %.*s but should return %.*s",
                 (int)fn_node->fn.name.len,
                 fn_node->fn.name.s,
                 (int)get_type(returned)->name.len,
                 get_type(returned)->name.s,
-                (int)get_type(fn_node->fn.ret)->name.len,
-                get_type(fn_node->fn.ret)->name.s);
+                (int)get_type(expected)->name.len,
+                get_type(expected)->name.s);
     }
-    */
 
     free_localscope(&scope);
 }

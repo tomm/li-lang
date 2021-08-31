@@ -12,15 +12,6 @@ static Program *program;
 static FILE *output;
 static int _local_label_seq = 0;
 
-static TypeId find_type(const AstNode *n, Str typename) {
-    //printf("Looking up type %.*s\n", (int)typename.len, typename.s);
-    TypeId id = lookup_type(typename);
-    if (id == -1) {
-        fatal_error(n->start_token, "Unknown type %.*s", (int)typename.len, typename.s);
-    }
-    return id;
-}
-
 static void __(const char *format, ...) __attribute__((format(printf, 1, 2)));
 static void __(const char *format, ...) {
 	char buf[256];
@@ -161,10 +152,6 @@ static void unalloc_stack_var() {
     vec_pop(&_stack_vars, &v);
 }
 
-static StackVar *get_stack_var(StackVarIdx idx) {
-    return vec_get(&_stack_vars, idx);
-}
-
 static Value emit_value_to_register(Value v, bool to_aux_reg) {
     const enum Storage st = to_aux_reg ? ST_REG_VAL_AUX : ST_REG_VAL;
 
@@ -265,6 +252,7 @@ static Value emit_pop(Value v, StackFrame *frame, bool to_aux_reg) {
             frame->stack_offset -= 2;
             return (Value) { .storage = ST_REG_EA, .typeId = v.typeId };
     }
+    assert(false);
 }
 static Value emit_expression(NodeIdx expr, StackFrame frame);
 
@@ -294,7 +282,7 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
 
 Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg = get_node(n->expr.builtin.first_arg);
 
     Value v = emit_expression(n->expr.builtin.first_arg, *frame);
 
@@ -393,7 +381,7 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
 
 Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg = get_node(n->expr.builtin.first_arg);
 
     Value v = emit_expression(n->expr.builtin.first_arg, *frame);
 
@@ -776,7 +764,7 @@ static Value emit_local_scope(NodeIdx scope, StackFrame frame) {
     const AstNode *n = get_node(scope);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_LOCAL_SCOPE);
 
-    StackVarIdx var = alloc_stack_var(n->start_token, frame, (StackVar) {
+    /*StackVarIdx var =*/ alloc_stack_var(n->start_token, frame, (StackVar) {
         .type = n->expr.local_scope.var_type,
         .ident = n->expr.local_scope.var_name,
         .offset = frame.locals_top,
@@ -859,6 +847,8 @@ static int get_max_local_vars_size(NodeIdx n)
     int size = 0;
 
     switch (node->expr.type) {
+        case EXPR_ASM:
+            break;
         case EXPR_LOCAL_SCOPE:
             size = get_type(node->expr.local_scope.var_type)->size +
                    get_max_local_vars_size(node->expr.local_scope.scoped_expr);
@@ -931,7 +921,7 @@ static Value emit_fn(NodeIdx fn) {
         
         TypeId argtype = get_node(arg)->fn_arg.type;
 
-        StackVarIdx v = alloc_stack_var(get_node(arg)->start_token, frame, (StackVar) {
+        /*StackVarIdx v =*/ alloc_stack_var(get_node(arg)->start_token, frame, (StackVar) {
             .type = argtype,
             .ident = get_node(arg)->fn_arg.name,
             .offset = bp_offset,
@@ -941,10 +931,12 @@ static Value emit_fn(NodeIdx fn) {
         frame.num_vars++;
     }
 
+    /*
     for (int i=0; i<_stack_vars.len; ++i) {
         StackVar *v = get_stack_var(i);
-        //fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
+        fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
     }
+    */
     
     Value ret_val = emit_expression(fn_node->fn.body, frame);
     // Typecheck should have been done in program.c

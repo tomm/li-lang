@@ -15,9 +15,9 @@ const char *token_type_cstr(enum TokType type) {
         case T_COLON: return ":";
         case T_MINUS: return "-";
         case T_PLUS: return "+";
-        case T_BITAND: return "&";
-        case T_BITOR: return "|";
-        case T_BITXOR: return "^";
+        case T_AMPERSAND: return "&";
+        case T_PIPE: return "|";
+        case T_ACUTE: return "^";
         case T_LOGICAL_AND: return "&&";
         case T_LOGICAL_OR: return "||";
         case T_FN: return "fn";
@@ -71,10 +71,10 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
         else if ((*pos == '&') && LOOK_AHEAD() == '&') { EMIT(((Token) { T_LOGICAL_AND, line, col, filename })); NEXT(); NEXT(); }
-        else if (*pos == '&') { EMIT(((Token) { T_BITAND, line, col, filename })); NEXT(); }
+        else if (*pos == '&') { EMIT(((Token) { T_AMPERSAND, line, col, filename })); NEXT(); }
         else if ((*pos == '|') && LOOK_AHEAD() == '|') { EMIT(((Token) { T_LOGICAL_OR, line, col, filename })); NEXT(); NEXT(); }
-        else if (*pos == '|') { EMIT(((Token) { T_BITOR, line, col, filename })); NEXT(); }
-        else if (*pos == '^') { EMIT(((Token) { T_BITXOR, line, col, filename })); NEXT(); }
+        else if (*pos == '|') { EMIT(((Token) { T_PIPE, line, col, filename })); NEXT(); }
+        else if (*pos == '^') { EMIT(((Token) { T_ACUTE, line, col, filename })); NEXT(); }
         else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col, filename })); NEXT(); }

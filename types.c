@@ -82,16 +82,15 @@ bool is_type_eq(TypeId a, TypeId b) {
                    ta->type == tb->type &&
                    is_type_eq(ta->array.contained, tb->array.contained);
         case TT_FUNC:
-            {
-                if (ta->func.args.len != tb->func.args.len) return false;
-                for (int i=0; i<ta->func.args.len; ++i) {
-                    if (!is_type_eq(
-                                *(TypeId*)vec_get(&ta->func.args, i),
-                                *(TypeId*)vec_get(&tb->func.args, i))) {
-                        return false;
-                    }
+            if (ta->func.args.len != tb->func.args.len) return false;
+            for (int i=0; i<ta->func.args.len; ++i) {
+                if (!is_type_eq(
+                            *(TypeId*)vec_get(&ta->func.args, i),
+                            *(TypeId*)vec_get(&tb->func.args, i))) {
+                    return false;
                 }
-                return true;
             }
+            return true;
     }
+    assert(false);
 }
