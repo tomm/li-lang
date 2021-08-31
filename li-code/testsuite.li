@@ -1,6 +1,9 @@
+include "li-code/softmath.li"; // needed for integer multiply
+
 fn test_u8_arith(a: u8, b: u8) -> u8 {
   2+b+a-3
 }
+
 fn test_u16_arith(a: u16, b: u16, c: u16, d: u8) -> u16 {
   a + b + c - 0x10f0u16 & 0x33cc | 0xf00f ^ d as u16
 }
@@ -113,11 +116,26 @@ fn main() {
     // while loops
     test_while();
 
+    // forward/extern declarations
+    if test_fwd_decl(2) != 3 { fail_() } else { pass() };
+
     // logical ops
     //if 1 && 1 { pass() } else { fail_() };
 
     output_results();
 }
+
+fn test_fwd_decl(a: u8) -> u8;
+
+asm(`
+test_fwd_decl:
+        ld hl, sp+3
+        ld a, [hl]
+        inc a
+        ret
+
+;INCLUDE "arse.inc"
+`);
 
 /* Show passed tests in reg 'b', failed tests in 'c', total in 'd',
  * elapsed time in 60ths of a second in `hl` */
@@ -185,4 +203,3 @@ fn test_while() {
     if arr[3] != -3 { fail_() } else { pass() };
     if arr[4] != -4 { fail_() } else { pass() };
 }
-

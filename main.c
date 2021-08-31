@@ -11,50 +11,34 @@
 #include "program.h"
 #include "output_lr35902.h"
 
-Str read_file(FILE *f) {
-    fseek(f, 0, SEEK_END);
-    const size_t len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char *buf = malloc(len);
-    const size_t num_read = fread(buf, 1, len, f);
-    assert(num_read == len);
-
-    return (Str) { buf, len };
-}
-
+/*
 void dump_tokens(Vec *tokens) {
     for (int i=0; i<tokens->len; ++i) {
         printf("%s ", token_type_cstr(((Token*)vec_get(tokens, i))->type));
     }
     printf("\n");
 }
+*/
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: ./cc <input.c>\n");
+        fprintf(stderr, "Usage: ./lic [--noemit] <input.li>\n");
     } else {
-        printf("opening %s\n", argv[1]);
-        FILE *f = fopen(argv[1], "r");
-        if (f == NULL) {
-            fprintf(stderr, "%s not found\n", argv[1]);
-            exit(-1);
-        }
-        Str buf = read_file(f);
-        fclose(f);
+        bool noemit = strcmp("--noemit", argv[1]) == 0;
 
+        Program prog = new_program();
         init_parser();
-        Vec token_vec = lex(buf);
-        dump_tokens(&token_vec);
-        const NodeIdx root = parse_module(&(TokenCursor) { .tokens = token_vec, .next = 0 });
 
-        Program prog = new_program(root);
-        print_ast(root, 0);
+        // produce AST with typed globals and functions,
+        // but 'unknown' type expressions in function bodies
+        parse_file(&prog, argv[noemit ? 2 : 1]);
 
-        output_lr35902(&prog);
+        // typecheck function bodies
+        typecheck_program(&prog);
 
-        vec_free(&token_vec);
-
-        Str_free(buf);
+        //print_ast(prog.root, 0);
+        if (!noemit) {
+            output_lr35902(&prog);
+        }
     }
 }

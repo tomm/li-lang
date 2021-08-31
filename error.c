@@ -8,7 +8,7 @@ void error(const Token *t, const char *format, ...) {
 	va_start(ap, format);
 	vsnprintf(buf, sizeof(buf), format, ap);
 	va_end(ap);
-    fprintf(stderr, "%d:%d: %s\n", t->line, t->col, buf);
+    fprintf(stderr, "%s:%d:%d: %s\n", t->filename, t->line, t->col, buf);
 }
 
 void fatal_error(const Token *t, const char *format, ...) {
@@ -17,7 +17,6 @@ void fatal_error(const Token *t, const char *format, ...) {
 	va_start(ap, format);
 	vsnprintf(buf, sizeof(buf), format, ap);
 	va_end(ap);
-    fprintf(stderr, "%d:%d: %s\n",
-            t->line, t->col, buf);
+    fprintf(stderr, "%s:%d:%d: %s\n", t->filename, t->line, t->col, buf);
     exit(-1);
 }

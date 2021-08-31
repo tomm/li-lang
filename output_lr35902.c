@@ -82,39 +82,6 @@ static void emit_boilerplate() {
     __("        halt");
     __("        nop");
     __("        jr .loop");
-
-    __("; 248 cycles");
-    __("__mulu8:");
-    __("    ; a = a*b");
-    __("        ld c, a");
-    __("        xor a, a");
-    __("    REPT 8");
-    __("        srl b");
-    __("        jr nc, .no\\@");
-    __("        add a, c");
-    __("    .no\\@");
-    __("        sla c");
-    __("    ENDR");
-    __("        ret");
-
-    __("; 700 cycles");
-    __("__mulu16:");
-    __("    ; hl = hl*de");
-    __("        ld b, h");
-    __("        ld c, l");
-    __("        xor a");
-    __("        ld h, a");
-    __("        ld l, a");
-    __("    REPT 16");
-    __("        srl b");
-    __("        rr c");
-    __("        jr nc, .no\\@");
-    __("        add hl, de");
-    __("    .no\\@");
-    __("        sla e");
-    __("        rl d");
-    __("    ENDR");
-    __("        ret");
 }
 
 /*         ST_REG_EA ST_REG_VAL ST_REG_VAL_AUX
@@ -310,7 +277,7 @@ typedef struct BuiltinImpl {
 Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
     emit_push(arg1, v1, frame);
@@ -345,7 +312,7 @@ Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Nod
 Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
     emit_push(arg1, v1, frame);
@@ -372,7 +339,7 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
 Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
     emit_push(arg1, v1, frame);
@@ -448,7 +415,7 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
 Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
     emit_push(arg1, v1, frame);
@@ -470,7 +437,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
 Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
     emit_push(arg1, v1, frame);
@@ -655,29 +622,21 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
 }
 
-static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg_list_head, StackFrame *frame) {
+static void emit_call_push_args(int arg_num, NodeIdx arg_list_head, StackFrame *frame) {
     // push last to first
     if (arg_list_head == 0) {
         return;
     }
 
-    // expected arg type from definition
-    AstNode *arg_type = get_node(first_arg_type);
-    assert(arg_type->type == AST_FN_ARG);
-
     AstNode *n = get_node(arg_list_head);
     if (n->next_sibling != 0) {
-        emit_call_push_args(arg_num+1, arg_type->next_sibling, n->next_sibling, frame);
+        emit_call_push_args(arg_num+1, n->next_sibling, frame);
     }
 
     assert(n->type == AST_EXPR);
     Value v = emit_expression(arg_list_head, *frame);
     v = emit_value_to_register(v, false);
     emit_push(n, v, frame);
-
-    const Type *expected_type = get_type(arg_type->fn_arg.type);
-
-    assert (is_type_eq(v.typeId, arg_type->fn_arg.type));
 }
 
 static Value emit_call(NodeIdx call, StackFrame frame) {
@@ -687,19 +646,6 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-        if (Str_eq(callee->expr.ident, "asm")) {
-            // emit literal asm
-            AstNode *arg = get_node(n->expr.call.first_arg);
-            if (arg->type != AST_EXPR || arg->expr.type != EXPR_LITERAL_STR) {
-                fatal_error(callee->start_token, "asm() expects string literal argument");
-            }
-            if (arg->next_sibling != 0) {
-                fatal_error(callee->start_token, "asm() takes only one argument");
-            }
-            fprintf(output, "\n%.*s\n", (int)arg->expr.literal_str.len, arg->expr.literal_str.s);
-            return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
-        }
-
         const AstNode *fn = lookup_global_sym(callee->expr.ident);
 
         // actualy compile error emitted by program.c
@@ -707,7 +653,7 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
         assert(fn->type == AST_FN);
 
         const int old_stack = frame.stack_offset;
-        emit_call_push_args(0, fn->fn.first_arg, n->expr.call.first_arg, &frame);
+        emit_call_push_args(0, n->expr.call.first_arg, &frame);
         // XXX does not check function exists, or check argument types!
         _i("call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
         const int stack_correction = frame.stack_offset - old_stack;
@@ -715,7 +661,9 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
             _i("add sp, %d", stack_correction);
         }
         frame.stack_offset += stack_correction;
-        return (Value) { .typeId = fn->fn.ret, .storage = ST_REG_VAL };
+        Type *fntype = get_type(fn->fn.type);
+        assert(fntype->type == TT_FUNC);
+        return (Value) { .typeId = fntype->func.ret, .storage = ST_REG_VAL };
     } else {
         fatal_error(callee->start_token, "fn call by expression not implemented");
     }
@@ -849,6 +797,9 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
     switch (n->expr.type) {
         case EXPR_BUILTIN:
             return emit_builtin(expr, frame);
+        case EXPR_ASM:
+            fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);
+            return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         case EXPR_CALL:
             return emit_call(expr, frame);
         case EXPR_LIST:
@@ -992,12 +943,12 @@ static Value emit_fn(NodeIdx fn) {
 
     for (int i=0; i<_stack_vars.len; ++i) {
         StackVar *v = get_stack_var(i);
-        fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
+        //fprintf(stderr, "var %.*s: %d(bp)\n", (int)v->ident.len, v->ident.s, v->offset);
     }
     
     Value ret_val = emit_expression(fn_node->fn.body, frame);
     // Typecheck should have been done in program.c
-    assert(is_type_eq(fn_node->fn.ret, ret_val.typeId));
+    assert(is_type_eq(get_type(fn_node->fn.type)->func.ret, ret_val.typeId));
 
     emit_value_to_register(ret_val, false);
 
@@ -1036,13 +987,18 @@ void output_lr35902(Program *prog) {
     emit_boilerplate();
 
     for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
-        if (get_node(node)->type == AST_FN) {
-            emit_fn(node);
+        AstNode *n = get_node(node);
+        if (n->type == AST_FN) {
+            if (n->fn.body != 0) {
+                emit_fn(node);
+            }
         }
-        else if (get_node(node)->type == AST_DEF_VAR) {
+        else if (n->type == AST_DEF_VAR) {
             record_def_var(node);
         }
-        else {
+        else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
+            fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);
+        } else {
             assert(false);
         }
     }

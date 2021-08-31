@@ -10,51 +10,6 @@ Symbol *lookup_program_symbol(Program *prog, Str name) {
     return NULL;
 }
 
-static void collect_symbols(Program *prog) {
-    AstNode *root_node = get_node(prog->root);
-    assert(root_node->type == AST_MODULE);
-
-    for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
-        AstNode *n = get_node(node);
-        if (n->type == AST_FN) {
-            // make a type for this function
-            TypeId type = add_type((Type) {
-                .name = { .s = "fn(..)", .len = 6 }, // XXX generate type name
-                .size = 0,
-                .stack_size = 0,
-                .stack_offset = 0,
-                .type = TT_FUNC,
-                .func = {
-                    .args = vec_init(sizeof(TypeId))
-                }
-            });
-
-            for (NodeIdx arg=n->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
-                assert(get_node(arg)->type == AST_FN_ARG);
-                vec_push(&get_type(type)->func.args, &get_node(arg)->fn_arg.type);
-            }
-
-            vec_push(&prog->symbols, &(Symbol) {
-                .name = n->fn.name,
-                .obj = node,
-                .type = type
-            });
-
-            n->fn.type = type;
-        }
-        else if (n->type == AST_DEF_VAR) {
-            vec_push(&prog->symbols, &(Symbol) {
-                .name = n->var_def.name,
-                .obj = node,
-                .type = n->var_def.type
-            });
-        }
-        else {
-            assert(false);
-        }
-    }
-}
-
 /* Crud for function local scopes */
 typedef struct Variable {
     Str name;
@@ -221,7 +176,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                                         get_type(expected_type)->name.s);
                             }
                         }
-                        t = fn->fn.ret;
+
+                        assert(get_type(fn->fn.type)->type == TT_FUNC);
+                        t = get_type(fn->fn.type)->func.ret;
                     }
                 } else {
                     fatal_error(callee->start_token, "fn call by expression not implemented");
@@ -271,11 +228,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_LOCAL_SCOPE:
             {
-                printf("LOCAL SCOPE TYPE: %.*s %.*s\n",
+                /*printf("LOCAL SCOPE TYPE: %.*s %.*s\n",
                     (int)n->expr.local_scope.var_name.len,
                     n->expr.local_scope.var_name.s,
                     (int)get_type(n->expr.local_scope.var_type)->name.len,
                     get_type(n->expr.local_scope.var_type)->name.s);
+                    */
 
                 scope_push(scope, (Variable) {
                     .name = n->expr.local_scope.var_name,
@@ -297,6 +255,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
 
 static void typecheck_fn(Program *prog, NodeIdx fn) {
     AstNode *fn_node = get_node(fn);
+
+    // ignore extern / forward declarations
+    if (fn_node->fn.body == 0) {
+        return;
+    }
 
     Scope scope = new_localscope();
     /* Add function arguments to scope */
@@ -327,7 +290,7 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
 }
 
 /** deduces the eval_type of AST_EXPR nodes, and checks for type errors. */
-static void typecheck_program(Program *prog) {
+void typecheck_program(Program *prog) {
     for (NodeIdx node=get_node(prog->root)->module.first_child; node != 0; node=get_node(node)->next_sibling) {
         if (get_node(node)->type == AST_FN) {
             typecheck_fn(prog, node);
@@ -335,14 +298,14 @@ static void typecheck_program(Program *prog) {
     }
 }
 
-Program new_program(NodeIdx root) {
+Program new_program() {
     Program prog = {
-        .root = root,
+        .root = 0,
         .symbols = vec_init(sizeof(Symbol))
     };
 
-    collect_symbols(&prog);
-    typecheck_program(&prog);
+    //collect_symbols(&prog);
+    //typecheck_program(&prog);
 
     return prog;
 }

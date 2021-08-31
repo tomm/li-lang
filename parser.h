@@ -7,6 +7,7 @@
 
 typedef int NodeIdx;
 typedef struct Token Token;
+typedef struct Program Program;
 
 typedef struct AstNode {
     enum AstType {
@@ -25,7 +26,6 @@ typedef struct AstNode {
             Str name;
             NodeIdx first_arg;
             NodeIdx body;
-            TypeId ret;
             TypeId type;
         } fn;
 
@@ -48,6 +48,7 @@ typedef struct AstNode {
                 EXPR_LITERAL_U16,
                 EXPR_LITERAL_STR,
                 EXPR_CALL,
+                EXPR_ASM,
                 EXPR_BUILTIN,
                 EXPR_CAST,
                 EXPR_IF_ELSE,
@@ -113,6 +114,10 @@ typedef struct AstNode {
                     NodeIdx arg;
                     TypeId to_type;
                 } cast;
+
+                struct {
+                    Str asm_text;
+                } asm_;
             };
         } expr;
     };
@@ -125,7 +130,7 @@ typedef struct TokenCursor {
 } TokenCursor;
 
 extern void init_parser();
-extern NodeIdx parse_module(TokenCursor *toks);
+extern void parse_file(Program *prog, const char *filename);
 extern void print_ast(NodeIdx nidx, int depth);
 AstNode *get_node(NodeIdx idx);
 // includes self

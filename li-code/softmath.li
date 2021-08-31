@@ -1,0 +1,34 @@
+asm("
+    ; 248 cycles
+    __mulu8:
+        ; a = a*b
+            ld c, a
+            xor a, a
+        REPT 8
+            srl b
+            jr nc, .no\@
+            add a, c
+        .no\@
+            sla c
+        ENDR
+            ret
+
+    ; 700 cycles
+    __mulu16:
+        ; hl = hl*de
+            ld b, h
+            ld c, l
+            xor a
+            ld h, a
+            ld l, a
+        REPT 16
+            srl b
+            rr c
+            jr nc, .no\@
+            add hl, de
+        .no\@
+            sla e
+            rl d
+        ENDR
+            ret
+");

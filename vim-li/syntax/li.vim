@@ -28,7 +28,7 @@ syntax keyword liStatement      return
 "syntax keyword liAssert         assert
 "syntax keyword liClassDecl      extends with implements
 syntax keyword liBranch         break continue nextgroup=liUserLabelRef skipwhite
-syntax keyword liKeyword        fn var
+syntax keyword liKeyword        fn var asm include
 "syntax match   liUserLabelRef   "\k\+" contained
 
 "syntax region  liLabelRegion   transparent matchgroup=liLabel start="\<case\>" matchgroup=NONE end=":"
@@ -42,12 +42,17 @@ syntax region  liComment       start="/\*"  end="\*/" contains=liTodo,liDocLink,
 syntax match   liLineComment   "//.*" contains=liTodo,@Spell
 
 " Strings
+syntax region  liMultilineString     start=+\z(["`]\)+ skip=+\\\\\|\\\z1+ end=+\z1+ contains=liGbAsm,liGbReg,liAsmLabel,liAsmComment
 "syntax region  liString        start=+\z(["']\)+ end=+\z1+ contains=@Spell,liInterpolation,liSpecialChar
 "syntax region  liRawString     start=+r\z(["']\)+ end=+\z1+ contains=@Spell
 "syntax region  liMultilineString     start=+\z("\{3\}\|'\{3\}\)+ end=+\z1+ contains=@Spell,liInterpolation,liSpecialChar
 "syntax region  liRawMultilineString     start=+r\z("\{3\}\|'\{3\}\)+ end=+\z1+ contains=@Spell
 "syntax match   liInterpolation contained "\$\(\w\+\|{[^}]\+}\)"
 "syntax match   liSpecialChar   contained "\\\(u\x\{4\}\|u{\x\+}\|x\x\x\|x{\x\+}\|.\)"
+syntax keyword liGbAsm contained ld xor and or add sub sbc rr rl db ds call di ei halt nop jp jr ret reti cp inc dec push pop
+syntax keyword liGbReg contained a b c d e h l f af bc de hl sp
+syntax match liAsmLabel contained /\I\i*:/
+syn match liAsmComment contained /;.*/
 
 " Numbers
 syntax match liDecNumber   display "\<[0-9][0-9_]*\%([iu]\%(size\|8\|16\)\)\="
@@ -79,6 +84,10 @@ highlight default link liConstant        Constant
 highlight default link liTypedef         Typedef
 highlight default link liTodo            Todo
 highlight default link liKeyword         Keyword
+highlight default link liGbAsm           Macro
+highlight default link liGbReg           Type
+highlight default link liAsmComment      Comment
+highlight default link liAsmLabel        Label
 highlight default link liType            Type
 highlight default link liInterpolation   PreProc
 highlight default link liSpecialChar     SpecialChar

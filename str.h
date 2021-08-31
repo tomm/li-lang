@@ -20,5 +20,11 @@ static inline bool Str_eq2(Str a, Str b) {
 static inline bool Str_eq(Str s, char *t) {
     return Str_eq2(s, (Str) { .s = t, .len = strlen(t) });
 }
+static inline char *Str_to_malloced_cstr(Str s) {
+    char *t = (char*)malloc(s.len+1);
+    memcpy(t, s.s, s.len);
+    t[s.len] = 0;
+    return t;
+}
 
 #endif /* __STR_H */

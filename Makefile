@@ -11,14 +11,14 @@ lic: $(objs)
 clean:
 	-rm *.o lic
 
-example:
-	./lic example.li
-	rgbasm out.asm -o example.o
-	rgblink -o example.gb example.o
-	rgbfix -v -p 0 example.gb
+testsuite:
+	./lic li-code/testsuite.li
+	rgbasm out.asm -o testsuite.o
+	rgblink -o testsuite.gb testsuite.o
+	rgbfix -v -p 0 testsuite.gb
 	
 conway:
-	./lic conway.li
+	./lic li-code/conway.li
 	rgbasm out.asm -o conway.o
 	rgblink -o conway.gb conway.o
 	rgbfix -v -p 0 conway.gb

@@ -6,7 +6,6 @@
 
 typedef struct Token {
     enum TokType {
-        T_SPACE,
         T_LBRACE,
         T_RBRACE,
         T_LPAREN,
@@ -45,6 +44,7 @@ typedef struct Token {
 
     int line;
     int col;
+    const char *filename;
 
     union {
         Str ident;
@@ -54,6 +54,6 @@ typedef struct Token {
 } Token;
 
 extern const char *token_type_cstr(enum TokType type);
-extern Vec lex(Str buf);
+extern Vec lex(Str buf, const char *filename);
 
 #endif /* __TOKEN_H */
