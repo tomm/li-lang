@@ -47,9 +47,9 @@ int main(int argc, char** argv) {
         Vec token_vec = lex(buf);
         dump_tokens(&token_vec);
         const NodeIdx root = parse_module(&(TokenCursor) { .tokens = token_vec, .next = 0 });
-        print_ast(root, 0);
 
         Program prog = new_program(root);
+        print_ast(root, 0);
 
         output_lr35902(&prog);
 

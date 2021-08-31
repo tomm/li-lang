@@ -39,6 +39,8 @@ static void collect_symbols(Program *prog) {
                 .obj = node,
                 .type = type
             });
+
+            n->fn.type = type;
         }
         else if (n->type == AST_DEF_VAR) {
             vec_push(&prog->symbols, &(Symbol) {
@@ -76,8 +78,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr);
 static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
     AstNode *n = get_node(expr);
     TypeId t = TYPE_UNKNOWN;
+    enum BuiltinOp op = n->expr.builtin.op;
 
-    switch (n->expr.builtin.op) {
+    switch (op) {
         case BUILTIN_ARRAY_INDEXING:
             {
                 if (ast_node_sibling_size(n->expr.builtin.first_arg) != 2) {
@@ -114,6 +117,10 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
                             get_type(t2)->name.s);
                 }
             }
+            // actually boolean, but using u8 for now
+            if (op == BUILTIN_EQ || op == BUILTIN_NEQ) {
+                t = U8;
+            }
             break;
     }
 
@@ -126,6 +133,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
         case EXPR_CAST:
+            typecheck_expr(prog, scope, n->expr.cast.arg);
             t = n->expr.cast.to_type;
             break;
         case EXPR_LIST:
@@ -178,6 +186,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                         // ok
                         t = VOID;
                     } else {
+                        typecheck_expr(prog, scope, n->expr.call.callee);
                         Symbol *fn_sym = lookup_program_symbol(prog, callee->expr.ident);
 
                         if (fn_sym == NULL) {
@@ -262,6 +271,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_LOCAL_SCOPE:
             {
+                printf("LOCAL SCOPE TYPE: %.*s %.*s\n",
+                    (int)n->expr.local_scope.var_name.len,
+                    n->expr.local_scope.var_name.s,
+                    (int)get_type(n->expr.local_scope.var_type)->name.len,
+                    get_type(n->expr.local_scope.var_type)->name.s);
+
                 scope_push(scope, (Variable) {
                     .name = n->expr.local_scope.var_name,
                     .type = n->expr.local_scope.var_type

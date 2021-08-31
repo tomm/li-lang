@@ -26,7 +26,39 @@ var test_arr_2d_u16: [[u16; 2]; 2];
 fn pass() { passes = passes + 1; total = total + 1; }
 fn fail_() { fails = fails + 1; total = total + 1; } // seems 'fail' is an rgbasm special thing...
 
+var elapsed_vblanks: u16;
+
+// on_vblank is a special function name. if it is defined then
+// the li compiler will output a call to it from the vblank
+// vector (ROM0 $40). You still need to enable interrupts, and
+// enable the vblank interrupt flag specifically (bit 0 of $ffff)
+// for the on_vblank handler to be called
+fn on_vblank() {
+    asm("
+        push af
+        push bc
+        push de
+        push hl
+
+    ");
+    elapsed_vblanks = elapsed_vblanks + 1u16;
+    asm("
+        pop hl
+        pop de
+        pop bc
+        pop af
+    ");
+}
+
 fn main() {
+    // enable vblank interrupt
+    elapsed_vblanks = 0u16;
+    asm("
+        ld a, 1
+        ld [$ffff], a  ; enable vblank interrupt
+        ei
+    ");
+
     passes = fails = total = 0;
 
     // argument passing and arithmetic
@@ -87,15 +119,32 @@ fn main() {
     output_results();
 }
 
-/* Show passed tests in reg 'a', failed tests in 'b', total in 'c' */
+/* Show passed tests in reg 'b', failed tests in 'c', total in 'd',
+ * elapsed time in 60ths of a second in `hl` */
 fn output_results() {
     asm("
-         ld a, [passes]
-         ld hl, fails
+         ld hl, passes
          ld b, [hl]
-         ld hl, total
+
+         ld hl, fails
          ld c, [hl]
+
+         ld hl, total
+         ld d, [hl]
+
+         ld a, [elapsed_vblanks]
+         ld l, a
+         ld a, [elapsed_vblanks+1]
+         ld h, a
+
+         xor a
+         ld e, a
+
          db $dd");
+}
+
+fn local_scope_argpass(a: u8) -> u8 {
+    a
 }
 
 fn local_scope_test(a: u8) -> u8 {
@@ -114,6 +163,7 @@ fn local_scope_test(a: u8) -> u8 {
     if l2 != 1 { fail_() } else { pass() };
     if l3[0] != 5u16 { fail_() } else { pass() };
     if l3[l2] != 6u16 { fail_() } else { pass() };
+    if local_scope_argpass(l1) != 4 { fail_() } else { pass() };
 
     l3[1] as u8
 }

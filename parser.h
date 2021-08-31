@@ -26,6 +26,7 @@ typedef struct AstNode {
             NodeIdx first_arg;
             NodeIdx body;
             TypeId ret;
+            TypeId type;
         } fn;
 
         struct {

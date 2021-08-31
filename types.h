@@ -30,6 +30,7 @@ typedef struct Type {
 
         struct {
             Vec /*<TypeId>*/ args;
+            TypeId ret;
         } func;
     };
 } Type;

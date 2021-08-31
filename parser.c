@@ -758,6 +758,10 @@ void print_ast(NodeIdx nidx, int depth) {
         case AST_FN:
             {
                 _indent(depth);
+                printf("(%.*s) ",
+                        (int)get_type(node->fn.type)->name.len,
+                        get_type(node->fn.type)->name.s);
+                _indent(depth);
                 printf("fn ");
                 Str_puts(node->fn.name, stdout);
                 printf("(");
@@ -781,6 +785,9 @@ void print_ast(NodeIdx nidx, int depth) {
             break;
         case AST_EXPR:
             _indent(depth+1);
+            printf("(%.*s) ",
+                    (int)get_type(node->expr.eval_type)->name.len,
+                    get_type(node->expr.eval_type)->name.s);
             switch (node->expr.type) {
                 case EXPR_LOCAL_SCOPE:
                     {

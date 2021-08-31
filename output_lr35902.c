@@ -49,7 +49,22 @@ static void _label(int label_num) {
     __(".l%d:", label_num);
 }
 
+const AstNode *lookup_global_sym(Str name)
+{
+    Symbol *sym = lookup_program_symbol(program, name);
+    if (sym) {
+        return get_node(sym->obj);
+    } else {
+        return NULL;
+    }
+}
+
 static void emit_boilerplate() {
+    if (lookup_global_sym((Str) { .s = "on_vblank", .len = 9 })) {
+        __("SECTION \"Vblank\", ROM0[$40]");
+        _i("call on_vblank");
+        _i("reti");
+    }
     __("SECTION \"Header\", ROM0[$100]");
     __("        nop");
     __("        jp __start");
@@ -150,16 +165,6 @@ const StackVar *lookup_stack_var(Str ident, StackFrame frame)
         }
     }
     return NULL;
-}
-
-const AstNode *lookup_global_sym(Str name)
-{
-    Symbol *sym = lookup_program_symbol(program, name);
-    if (sym) {
-        return get_node(sym->obj);
-    } else {
-        return NULL;
-    }
 }
 
 /*
@@ -296,38 +301,82 @@ static Value emit_pop(Value v, StackFrame *frame, bool to_aux_reg) {
 }
 static Value emit_expression(NodeIdx expr, StackFrame frame);
 
-static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
-    // v1 on stack, v2 as tmp (active Value)
-    
-    if (op == BUILTIN_ASSIGN) {
-        v2 = emit_value_to_register(v2, true);   // v2 in `b`
-        v1 = emit_pop(v1, frame, false);
+typedef struct BuiltinImpl {
+    enum BuiltinOp op;
+    enum TypeType tt1, tt2;
+    Value (*emit)(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2);
+} BuiltinImpl;
 
-        if (v1.storage != ST_REG_EA) {
-            fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
-        }
-        _i("ld [hl], b");
-        return (Value) { .typeId = U8, .storage = ST_REG_EA };
+Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+    v2 = emit_value_to_register(v2, true);   // v2 in `b`
+    v1 = emit_pop(v1, frame, false);
+
+    if (v1.storage != ST_REG_EA) {
+        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
     }
+    _i("ld [hl], b");
+    return (Value) { .typeId = U8, .storage = ST_REG_EA };
+}
 
-    if (op == BUILTIN_ARRAY_INDEXING) {
-        assert(get_type(v1.typeId)->type == TT_ARRAY);
-        assert(v1.storage == ST_REG_EA);
-        const Type *contained = get_type(get_type(v1.typeId)->array.contained);
+Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg = get_node(n->expr.builtin.first_arg);
 
-        v2 = emit_value_to_register(v2, true);   // v2 in `b`
-        _i("ld e, b");
-        _i("ld d, 0");
-        if (contained->size != 1) {
-            _i("ld hl, %d", contained->size);
-            _i("call __mulu16");
-            _i("ld d, h");
-            _i("ld e, l");
-        }
-        v1 = emit_pop(v1, frame, false);
-        _i("add hl, de");
-        return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
+    Value v = emit_expression(n->expr.builtin.first_arg, *frame);
+
+    switch (op) {
+        case BUILTIN_UNARY_NEG:
+            v = emit_value_to_register(v, true);   // v in `b`
+            _i("xor a");
+            _i("sub a, b");
+            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+        default:
+            assert(false);
     }
+}
+
+Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
+    assert(get_type(v1.typeId)->type == TT_ARRAY);
+    assert(v1.storage == ST_REG_EA);
+    const Type *contained = get_type(get_type(v1.typeId)->array.contained);
+
+    v2 = emit_value_to_register(v2, true);   // v2 in `b`
+    _i("ld e, b");
+    _i("ld d, 0");
+    if (contained->size != 1) {
+        _i("ld hl, %d", contained->size);
+        _i("call __mulu16");
+        _i("ld d, h");
+        _i("ld e, l");
+    }
+    v1 = emit_pop(v1, frame, false);
+    _i("add hl, de");
+    return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
+}
+
+Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
     v1 = emit_pop(v1, frame, false);
@@ -375,22 +424,60 @@ static Value emit_builtin_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Value v1, Value v2) {
-    // v1 on stack, v2 as tmp (active Value)
+Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg = get_node(n->expr.builtin.first_arg);
+
+    Value v = emit_expression(n->expr.builtin.first_arg, *frame);
+
+    switch (op) {
+        case BUILTIN_UNARY_NEG:
+            v = emit_value_to_register(v, false); // v in `hl`
+            _i("xor a");
+            _i("sub a, l");
+            _i("ld l, a");
+            _i("xor a");
+            _i("sbc a, h");
+            _i("ld h, a");
+            return (Value) { .typeId = U16, .storage = ST_REG_VAL };
+        default:
+            assert(false);
+    }
+}
+
+Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
     v2 = emit_value_to_register(v2, true);   // v2 in `de`
     v1 = emit_pop(v1, frame, false);
 
-    if (op == BUILTIN_ASSIGN) {
-        if (v1.storage != ST_REG_EA) {
-            fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
-        }
-        _i("ld a, e");
-        _i("ld [hl+], a");
-        _i("ld a, d");
-        _i("ld [hl-], a");
-        return (Value) { .typeId = U16, .storage = ST_REG_EA };
+    if (v1.storage != ST_REG_EA) {
+        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
     }
+    _i("ld a, e");
+    _i("ld [hl+], a");
+    _i("ld a, d");
+    _i("ld [hl-], a");
+    return (Value) { .typeId = U16, .storage = ST_REG_EA };
+}
 
+Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
+    v2 = emit_value_to_register(v2, true);   // v2 in `de`
+    v1 = emit_pop(v1, frame, false);
     v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
@@ -472,83 +559,72 @@ static Value emit_builtin_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
     return (Value) { .typeId = U16, .storage = ST_REG_VAL };
 }
 
-/*
-typedef struct BuiltinImpl {
-    enum BuiltinOp op;
-    enum TypeType tt1, tt2;
-    Value (*emit)(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2);
-} BuiltinImpl;
-
-Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *arg1 = get_node(get_node(expr)->expr.builtin.first_arg);
-    AstNode *arg2 = get_node(arg1->next_sibling);
-}
-
-Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-}
-
 static BuiltinImpl builtin_impls[] = {
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
+    { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
+
     { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
+    { -1 }
 };
-*/
 
 static Value emit_builtin(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
+    enum BuiltinOp op = n->expr.builtin.op;
 
     const int n_args = ast_node_sibling_size(n->expr.builtin.first_arg);
+    assert(n_args == 1 || n_args == 2);
+
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
 
-    Value v1;
-    Value v2;
+    enum TypeType ttarg1 = get_type(arg1->expr.eval_type)->type;
+    enum TypeType ttarg2 = n_args > 1 ?  get_type(get_node(arg1->next_sibling)->expr.eval_type)->type : TT_PRIM_VOID;
 
-    if (n_args == 1) {
-        // unary operator
-        v1 = emit_expression(n->expr.builtin.first_arg, frame);
-
-        switch (n->expr.builtin.op) {
-            case BUILTIN_UNARY_NEG:
-                if (v1.typeId == U8) {
-                    v1 = emit_value_to_register(v1, true);   // v1 in `b`
-                    _i("xor a");
-                    _i("sub a, b");
-                    v1 = (Value) { .typeId = U8, .storage = ST_REG_VAL };
-                }
-                else if (v1.typeId == U16) {
-                    v1 = emit_value_to_register(v1, false); // v1 in `hl`
-                    _i("xor a");
-                    _i("sub a, l");
-                    _i("ld l, a");
-                    _i("xor a");
-                    _i("sbc a, h");
-                    _i("ld h, a");
-                    v1 = (Value) { .typeId = U16, .storage = ST_REG_VAL };
-                }
-                else {
-                    fatal_error(n->start_token, "Invalid argument type '%.*s' to unary negative",
-                            (int)get_type(v1.typeId)->name.len,
-                            get_type(v1.typeId)->name.s);
-                }
-                break;
-            default:
-                assert(false);
+    // do we have an implementation of this op?
+    for (int i=0; builtin_impls[i].op != -1; ++i) {
+        if (builtin_impls[i].op == op &&
+            builtin_impls[i].tt1 == ttarg1 &&
+            builtin_impls[i].tt2 == ttarg2) {
+            Value result = builtin_impls[i].emit(call, &frame, op,
+                    n->expr.builtin.first_arg, arg1->next_sibling);
+            if (!is_type_eq(result.typeId, n->expr.eval_type)) {
+                fatal_error(n->start_token, "Compiler bug. Builtin operator yielded the wrong type. Expected %.*s but got %.*s",
+                        (int)get_type(n->expr.eval_type)->name.len,
+                        get_type(n->expr.eval_type)->name.s,
+                        (int)get_type(result.typeId)->name.len,
+                        get_type(result.typeId)->name.s);
+            }
+            return result;
         }
-        return v1;
     }
-    else if (n_args == 2) {
-        // binary operator
-        v1 = emit_expression(n->expr.builtin.first_arg, frame);
-        emit_push(arg1, v1, &frame);
-        v2 = emit_expression(arg1->next_sibling, frame);
-
-        switch (v2.typeId) {
-            case U8: return emit_builtin_u8(call, &frame, n->expr.builtin.op, v1, v2);
-            case U16: return emit_builtin_u16(call, &frame, n->expr.builtin.op, v1, v2);
-            default: assert(false);
-        }
+    if (n_args == 1) {
+        Str typename_ = get_type(arg1->expr.eval_type)->name;
+        fatal_error(n->start_token, "Invalid operands to unary operator: %.*s",
+                (int)typename_.len, typename_.s);
     } else {
-        assert(false);
+        Str typename1 = get_type(arg1->expr.eval_type)->name;
+        Str typename2 = get_type(get_node(arg1->next_sibling)->expr.eval_type)->name;
+        fatal_error(n->start_token, "Invalid operands to binary operator: %.*s and %.*s",
+                (int)typename1.len, typename1.s,
+                (int)typename2.len, typename2.s);
     }
 }
 
@@ -596,6 +672,7 @@ static void emit_call_push_args(int arg_num, NodeIdx first_arg_type, NodeIdx arg
 
     assert(n->type == AST_EXPR);
     Value v = emit_expression(arg_list_head, *frame);
+    v = emit_value_to_register(v, false);
     emit_push(n, v, frame);
 
     const Type *expected_type = get_type(arg_type->fn_arg.type);
@@ -823,6 +900,7 @@ int max(int a, int b) { return a>b?a:b; }
 
 static int get_max_local_vars_size(NodeIdx n)
 {
+    if (n == 0) return 0;
     const AstNode *node = get_node(n);
 
     assert(node->type == AST_EXPR);
