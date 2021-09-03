@@ -6,6 +6,33 @@
 
 static Vec _node_alloc;
 
+const char* builtin_name(enum BuiltinOp op) {
+    switch (op) {
+        case BUILTIN_ADD: return "add";
+        case BUILTIN_SUB: return "subtract";
+        case BUILTIN_BITAND: return "bitwise and";
+        case BUILTIN_BITOR: return "bitwise or";
+        case BUILTIN_BITXOR: return "bitwise xor";
+        case BUILTIN_LOGICAL_AND: return "logical and";
+        case BUILTIN_LOGICAL_OR: return "logical or";
+        case BUILTIN_UNARY_LOGICAL_NOT: return "logical not";
+        case BUILTIN_MUL: return "multiply";
+        case BUILTIN_ASSIGN: return "assignment";
+        case BUILTIN_EQ: return "equality";
+        case BUILTIN_NEQ: return "inequality";
+        case BUILTIN_LT: return "less than";
+        case BUILTIN_GT: return "greater than";
+        case BUILTIN_LTE: return "less than or equal to";
+        case BUILTIN_GTE: return "greater than or equal to";
+        case BUILTIN_ARRAY_INDEXING: return "array indexing";
+        case BUILTIN_UNARY_NEG: return "unary negation";
+        case BUILTIN_UNARY_ADDRESSOF: return "address of";
+        case BUILTIN_UNARY_DEREF: return "pointer dereference";
+        case BUILTIN_UNARY_BITNOT: return "bitwise not";
+    }
+    assert(false);
+}
+
 static Str read_file(FILE *f) {
     fseek(f, 0, SEEK_END);
     const size_t len = ftell(f);
@@ -18,7 +45,7 @@ static Str read_file(FILE *f) {
     return (Str) { buf, len };
 }
 
-static const Token *tok_peek(TokenCursor *cursor, int ahead) {
+static const Token *tok_peek_whitespace_sensitive(TokenCursor *cursor, int ahead) {
     int next = cursor->next;
     while (next < cursor->tokens.len) {
         const Token *t = (Token*)vec_get(&cursor->tokens, next);
@@ -28,21 +55,46 @@ static const Token *tok_peek(TokenCursor *cursor, int ahead) {
             return t;
         }
     }
+    fprintf(stderr, "tok_peek_whitespace_sensitive() called at EOF position\n");
+    fflush(stderr);
+    assert(false);
+}
+
+static void ignore_whitespace(TokenCursor *cursor) {
+    while (cursor->next < cursor->tokens.len) {
+        const Token *t = (Token*)vec_get(&cursor->tokens, cursor->next);
+        if (t->type != T_SPACE) break;
+        cursor->next++;
+    }
+}
+
+static const Token *tok_peek(TokenCursor *cursor, int ahead) {
+    int next = cursor->next;
+    while (next < cursor->tokens.len) {
+        const Token *t = (Token*)vec_get(&cursor->tokens, next);
+        next++;
+        if (t->type == T_SPACE) continue;
+
+        if (ahead-- == 0) {
+            return t;
+        }
+    }
     fprintf(stderr, "tok_peek() called at EOF position\n");
     fflush(stderr);
-    abort();
+    assert(false);
 }
 
 static const Token *tok_next(TokenCursor *cursor) {
     while (cursor->next < cursor->tokens.len) {
         const Token *t = (Token*)vec_get(&cursor->tokens, cursor->next);
         cursor->next++;
+        if (t->type == T_SPACE) continue;
 
         return t;
     }
     fprintf(stderr, "tok_next() called at EOF position\n");
     fflush(stderr);
-    abort();
+    assert(false);
 }
 
 void init_parser() {
@@ -261,10 +313,14 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
 static NodeIdx parse_unary_expression(TokenCursor *toks) {
     const Token *t = tok_peek(toks, 0);
 
-    if (t->type == T_MINUS) {
-        chomp(toks, T_MINUS);
+    if ((t->type == T_MINUS) ||
+        (t->type == T_ASTERISK) ||
+        (t->type == T_TILDE) ||
+        (t->type == T_EXCLAMATION) ||
+        (t->type == T_AMPERSAND)) {
+        tok_next(toks);
         ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, parse_postfix_expression(toks));
+        ChildCursor_append(&args, parse_unary_expression(toks));
 
         NodeIdx n = alloc_node();
         set_node(n, &(AstNode) {
@@ -273,7 +329,17 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
-                    .op = BUILTIN_UNARY_NEG,
+                    .op = t->type == T_MINUS
+                        ? BUILTIN_UNARY_NEG
+                        : t->type == T_EXCLAMATION
+                        ? BUILTIN_UNARY_LOGICAL_NOT
+                        : t->type == T_TILDE
+                        ? BUILTIN_UNARY_BITNOT
+                        : t->type == T_ASTERISK
+                        ? BUILTIN_UNARY_DEREF
+                        : t->type == T_AMPERSAND
+                        ? BUILTIN_UNARY_ADDRESSOF
+                        : (assert(false), 0),
                     .first_arg = args.first_child,
                 }
             }
@@ -339,12 +405,27 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
 static NodeIdx parse_additive_expression(TokenCursor *toks) {
     NodeIdx n = parse_multiplicative_expression(toks);
 
-    while (tok_peek(toks, 0)->type == T_PLUS ||
-           tok_peek(toks, 0)->type == T_MINUS ||
-           tok_peek(toks, 0)->type == T_AMPERSAND ||
-           tok_peek(toks, 0)->type == T_PIPE ||
-           tok_peek(toks, 0)->type == T_ACUTE
-    ) {
+
+    for (;;) {
+        // needed so tok_peek_whitespace_sensitive isn't confused by whitespace BEFORE
+        // the first token
+        ignore_whitespace(toks);
+        if (!(
+            tok_peek(toks, 0)->type == T_PLUS ||
+            tok_peek(toks, 0)->type == T_MINUS ||
+            (
+                tok_peek(toks, 0)->type == T_AMPERSAND &&
+                tok_peek_whitespace_sensitive(toks, 1)->type != T_AMPERSAND
+            ) || (
+                tok_peek(toks, 0)->type == T_PIPE &&
+                tok_peek_whitespace_sensitive(toks, 1)->type != T_PIPE
+            ) || (
+                tok_peek(toks, 0)->type == T_ACUTE &&
+                tok_peek_whitespace_sensitive(toks, 1)->type != T_ACUTE
+            )
+        )) {
+            break;
+        }
         const Token *t = tok_next(toks);
 
         ChildCursor args = ChildCursor_init();
@@ -364,7 +445,7 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
                         : t->type == T_AMPERSAND ? BUILTIN_BITAND
                         : t->type == T_PIPE ? BUILTIN_BITOR
                         : t->type == T_ACUTE ? BUILTIN_BITXOR
-                        : (abort(), BUILTIN_ADD)
+                        : (assert(false), 0)
                     ),
                     .first_arg = args.first_child
                 }
@@ -378,10 +459,22 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
 static NodeIdx parse_logical_expression(TokenCursor *toks) {
     NodeIdx n = parse_additive_expression(toks);
 
-    while (tok_peek(toks, 0)->type == T_LOGICAL_OR ||
-           tok_peek(toks, 0)->type == T_LOGICAL_AND
-    ) {
+    for (;;) {
+        ignore_whitespace(toks);
+
+        if (!(
+            (
+                tok_peek(toks, 0)->type == T_PIPE &&
+                tok_peek_whitespace_sensitive(toks, 1)->type == T_PIPE
+            ) || (
+                tok_peek(toks, 0)->type == T_AMPERSAND &&
+                tok_peek_whitespace_sensitive(toks, 1)->type == T_AMPERSAND
+            )
+        )) {
+            break;
+        }
         const Token *t = tok_next(toks);
+        tok_next(toks); // eat second character of && or ||
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -394,7 +487,7 @@ static NodeIdx parse_logical_expression(TokenCursor *toks) {
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
-                    .op = t->type == T_LOGICAL_OR ? BUILTIN_LOGICAL_OR : BUILTIN_LOGICAL_AND,
+                    .op = t->type == T_PIPE ? BUILTIN_LOGICAL_OR : BUILTIN_LOGICAL_AND,
                     .first_arg = args.first_child
                 }
             }
@@ -408,7 +501,9 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
     NodeIdx n = parse_logical_expression(toks);
 
     while (tok_peek(toks, 0)->type == T_EQ ||
-           tok_peek(toks, 0)->type == T_NEQ
+           tok_peek(toks, 0)->type == T_NEQ ||
+           tok_peek(toks, 0)->type == T_GT ||
+           tok_peek(toks, 0)->type == T_LT
     ) {
         const Token *t = tok_next(toks);
 
@@ -423,7 +518,15 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
-                    .op = t->type == T_EQ ? BUILTIN_EQ : BUILTIN_NEQ,
+                    .op = t->type == T_EQ
+                          ? BUILTIN_EQ
+                          : t->type == T_NEQ
+                          ? BUILTIN_NEQ
+                          : t->type == T_GT
+                          ? BUILTIN_GT
+                          : t->type == T_LT
+                          ? BUILTIN_LT
+                          : (assert(false), 0),
                     .first_arg = args.first_child
                 }
             }
@@ -604,6 +707,11 @@ static TypeId parse_type(TokenCursor *toks) {
             fatal_error(t, "Unknown type '%.*s'", (int)t->ident.len, t->ident.s);
         }
         return type;
+    }
+    else if (t->type == T_AMPERSAND) {
+        // pointer
+        TypeId ref = parse_type(toks);
+        return make_ptr_type(ref);
     }
     else if (t->type == T_LSQBRACKET) {
         // an array
@@ -856,6 +964,13 @@ NodeIdx parse_module(TokenCursor *toks) {
 
 }
 
+void dump_tokens(Vec *tokens) {
+    for (int i=0; i<tokens->len; ++i) {
+        printf("%s ", token_type_cstr(((Token*)vec_get(tokens, i))->type));
+    }
+    printf("\n");
+}
+
 void parse_file(Program *prog, const char *filename) {
     //printf("opening %s\n", filename);
     FILE *f = fopen(filename, "r");
@@ -868,6 +983,7 @@ void parse_file(Program *prog, const char *filename) {
     fclose(f);
     // XXX never freed for same reason
     Vec token_vec = lex(buf, filename);
+    //dump_tokens(&token_vec);
 
     TokenCursor toks = { .tokens = token_vec, .next = 0 };
     prog->root = parse_module(&toks);

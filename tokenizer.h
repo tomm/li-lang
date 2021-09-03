@@ -6,6 +6,7 @@
 
 typedef struct Token {
     enum TokType {
+        T_SPACE,
         T_LBRACE,
         T_RBRACE,
         T_LPAREN,
@@ -17,16 +18,17 @@ typedef struct Token {
         T_MINUS,
         T_PLUS,
         T_AMPERSAND,
+        T_EXCLAMATION,
         T_PIPE,
+        T_TILDE,
         T_ACUTE,
-        T_LOGICAL_AND,
-        T_LOGICAL_OR,
         T_ASTERISK,
         T_COMMA,
         T_ASSIGN,
         T_EQ,
         T_NEQ,
         T_GT,
+        T_LT,
         T_AS,
         T_IF,
         T_ELSE,

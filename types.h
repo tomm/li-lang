@@ -19,7 +19,7 @@ typedef struct Type {
         TT_PRIM_U16,
         TT_ARRAY,
         TT_FUNC,
-        // TT_PTR,
+        TT_PTR,
         // TT_STRUCT
     } type;
 
@@ -32,6 +32,10 @@ typedef struct Type {
             Vec /*<TypeId>*/ args;
             TypeId ret;
         } func;
+
+        struct {
+            TypeId ref;
+        } ptr;
     };
 } Type;
 
@@ -46,5 +50,6 @@ TypeId add_type(Type t);
 TypeId lookup_type(Str name);
 Type *get_type(TypeId id);
 bool is_type_eq(TypeId a, TypeId b);
+TypeId make_ptr_type(TypeId ref);
 
 #endif /* TYPES_H */

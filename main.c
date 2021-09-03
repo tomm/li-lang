@@ -11,15 +11,6 @@
 #include "program.h"
 #include "output_lr35902.h"
 
-/*
-void dump_tokens(Vec *tokens) {
-    for (int i=0; i<tokens->len; ++i) {
-        printf("%s ", token_type_cstr(((Token*)vec_get(tokens, i))->type));
-    }
-    printf("\n");
-}
-*/
-
 int main(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: ./lic [--noemit] <input.li>\n");

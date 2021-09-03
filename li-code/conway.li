@@ -22,10 +22,7 @@ fn gen_tile(x: u8, y: u8) {
     if get_map_wrapped(x-1, y) == 1 { friends = friends + 1 };
 
     if map[x][y] == 1 {
-        map2[x][y] = 0;
-        if friends == 2 { map2[x][y] = 1 };
-        if friends == 3 { map2[x][y] = 1 };
-        //map2[x][y] = if friends == 2 || friends == 3 { 1 } else { 0 };
+        map2[x][y] = if (friends == 2) || (friends == 3) { 1 } else { 0 };
     } else {
         map2[x][y] = if friends == 3 { 1 } else { 0 };
     }
@@ -56,6 +53,14 @@ fn life_generation() {
         };
         y = y + 1;
     };
+}
+
+fn lcd_off() {
+    *(0xff40 as &u8) = 0;
+}
+
+fn lcd_on() {
+    *(0xff40 as &u8) = 0x81; /* i want binary literals... */
 }
 
 fn main() {
@@ -92,7 +97,7 @@ rBGP equ $ff47 ; window palette data
 
         ; setup video stuff
         call WaitLY144
-        call LCDOff
+        call lcd_off
             ; wipe vram
             ld hl, $8000
             ld de, $a000-$8000
@@ -109,7 +114,7 @@ rBGP equ $ff47 ; window palette data
             xor a
             ld [rSCY], a
             ld [rSCX], a
-        call LCDOn
+        call lcd_on
 
         ;di
         ; wait for keypress to collect Rand entropy
@@ -199,16 +204,6 @@ GamepadInterrupt:
 
         pop af
         reti
-
-LCDOff:
-        xor a
-        ld [rLCDC], a
-        ret
-
-LCDOn:
-        ld a, %10000001
-        ld [rLCDC], a
-        ret
 
 WaitLY144:
     ; fn ()

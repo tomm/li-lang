@@ -5,6 +5,7 @@
 
 const char *token_type_cstr(enum TokType type) {
     switch (type) {
+        case T_SPACE: return "<space>";
         case T_LBRACE: return "{";
         case T_RBRACE: return "}";
         case T_LPAREN: return "(";
@@ -13,19 +14,20 @@ const char *token_type_cstr(enum TokType type) {
         case T_RSQBRACKET: return "]";
         case T_SEMICOLON: return ";";
         case T_COLON: return ":";
+        case T_TILDE: return "~";
         case T_MINUS: return "-";
         case T_PLUS: return "+";
         case T_AMPERSAND: return "&";
         case T_PIPE: return "|";
         case T_ACUTE: return "^";
-        case T_LOGICAL_AND: return "&&";
-        case T_LOGICAL_OR: return "||";
         case T_FN: return "fn";
         case T_VAR: return "var";
         case T_ASSIGN: return "=";
+        case T_EXCLAMATION: return "!";
         case T_EQ: return "==";
         case T_NEQ: return "!=";
         case T_GT: return ">";
+        case T_LT: return "<";
         case T_AS: return "as";
         case T_RETURN: return "return";
         case T_ASTERISK: return "*";
@@ -67,18 +69,19 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == ']') { EMIT(((Token) { T_RSQBRACKET, line, col, filename })); NEXT(); }
         else if (*pos == ';') { EMIT(((Token) { T_SEMICOLON, line, col, filename })); NEXT(); }
         else if (*pos == ':') { EMIT(((Token) { T_COLON, line, col, filename })); NEXT(); }
+        else if (*pos == '~') { EMIT(((Token) { T_TILDE, line, col, filename })); NEXT(); }
         else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
-        else if ((*pos == '&') && LOOK_AHEAD() == '&') { EMIT(((Token) { T_LOGICAL_AND, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_AMPERSAND, line, col, filename })); NEXT(); }
-        else if ((*pos == '|') && LOOK_AHEAD() == '|') { EMIT(((Token) { T_LOGICAL_OR, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_PIPE, line, col, filename })); NEXT(); }
         else if (*pos == '^') { EMIT(((Token) { T_ACUTE, line, col, filename })); NEXT(); }
         else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '!') { EMIT(((Token) { T_EXCLAMATION, line, col, filename })); NEXT(); }
         else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col, filename })); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col, filename })); NEXT(); }
+        else if (*pos == '<') { EMIT(((Token) { T_LT, line, col, filename })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col, filename })); NEXT(); }
         else if (!last_tok_was_literal && (*pos == '"' || *pos == '`')) {
             const char delim = *pos;
@@ -203,6 +206,7 @@ Vec lex(Str buf, const char *filename) {
             while (isspace(*pos) && pos < end) {
                 NEXT();
             }
+            EMIT(((Token) { T_SPACE, line, col, filename }));
             last_tok_was_literal = false;
         }
         else {

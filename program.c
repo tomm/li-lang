@@ -36,6 +36,27 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
     enum BuiltinOp op = n->expr.builtin.op;
 
     switch (op) {
+        case BUILTIN_UNARY_ADDRESSOF:
+            {
+                assert (ast_node_sibling_size(n->expr.builtin.first_arg) == 1);
+                NodeIdx arg = n->expr.builtin.first_arg;
+                t = typecheck_expr(prog, scope, arg);
+                t = make_ptr_type(t);
+            }
+            break;
+        case BUILTIN_UNARY_DEREF:
+            {
+                assert (ast_node_sibling_size(n->expr.builtin.first_arg) == 1);
+                NodeIdx arg = n->expr.builtin.first_arg;
+                t = typecheck_expr(prog, scope, arg);
+                if (get_type(t)->type != TT_PTR) {
+                    fatal_error(n->start_token, "Can not dereference non-pointer type '%.*s'",
+                            (int)get_type(t)->name.len,
+                            get_type(t)->name.s);
+                }
+                t = get_type(t)->ptr.ref;
+            }
+            break;
         case BUILTIN_ARRAY_INDEXING:
             {
                 if (ast_node_sibling_size(n->expr.builtin.first_arg) != 2) {
@@ -73,7 +94,11 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
                 }
             }
             // actually boolean, but using u8 for now
-            if (op == BUILTIN_EQ || op == BUILTIN_NEQ) {
+            if (op == BUILTIN_EQ ||
+                op == BUILTIN_NEQ ||
+                op == BUILTIN_LOGICAL_OR ||
+                op == BUILTIN_LOGICAL_AND ||
+                op == BUILTIN_UNARY_LOGICAL_NOT) {
                 t = U8;
             }
             break;
@@ -91,8 +116,26 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             t = VOID;
             break;
         case EXPR_CAST:
-            typecheck_expr(prog, scope, n->expr.cast.arg);
-            t = n->expr.cast.to_type;
+            {
+                TypeId from_type = typecheck_expr(prog, scope, n->expr.cast.arg);
+                t = n->expr.cast.to_type;
+
+                // valid casts in li
+                if (is_type_eq(from_type, t) ||
+                    (from_type == U8 && t == U16) ||
+                    (from_type == U16 && t == U8) ||
+                    (get_type(t)->type == TT_PTR && from_type == U16) ||
+                    (get_type(from_type)->type == TT_PTR && t == U16)
+                ) {
+                    // fine
+                } else {
+                    fatal_error(n->start_token, "Invalid type cast (from %.*s to %.*s)",
+                            (int)get_type(from_type)->name.len,
+                            get_type(from_type)->name.s,
+                            (int)get_type(t)->name.len,
+                            get_type(t)->name.s);
+                }
+            }
             break;
         case EXPR_LIST:
             {

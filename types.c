@@ -65,6 +65,22 @@ void init_types() {
     });
 }
 
+TypeId make_ptr_type(TypeId ref) {
+    // XXX could reuse types. instead we always make a new one
+    char buf[256];
+    snprintf(buf, sizeof(buf), "&%.*s", (int)get_type(ref)->name.len, get_type(ref)->name.s);
+    return add_type((Type) {
+        .type = TT_PTR,
+        .name = { .s = strdup(buf), .len = strlen(buf) },
+        .size = 2,
+        .stack_size = 2,
+        .stack_offset = 0,
+        .ptr = {
+            .ref = ref
+        }
+    });
+}
+
 bool is_type_eq(TypeId a, TypeId b) {
     Type *ta = get_type(a);
     Type *tb = get_type(b);
@@ -77,6 +93,9 @@ bool is_type_eq(TypeId a, TypeId b) {
             return a == b;
         case TT_PRIM_U16:
             return a == b;
+        case TT_PTR:
+            return tb->type == TT_PTR &&
+                   is_type_eq(ta->ptr.ref, tb->ptr.ref);
         case TT_ARRAY:
             return ta->size == tb->size &&
                    ta->type == tb->type &&

@@ -1,4 +1,30 @@
 * more loops
 * rom constants
 * assignment on declaration
-* pointers
+* pointer arithmetic
+* passing arrays by value
+* structs
+
+missing operators:
+  /
+  %
+  ++
+  --
+  >
+  <
+  >=
+  <=
+  <<
+  >>
+
+  +=
+  -=
+  *=
+  /=
+  %=
+  <<=
+  >>=
+  &=
+  ^=
+  |=
+  sizeof

@@ -101,12 +101,20 @@ typedef struct AstNode {
                         BUILTIN_BITXOR,
                         BUILTIN_LOGICAL_AND,
                         BUILTIN_LOGICAL_OR,
+                        BUILTIN_UNARY_LOGICAL_NOT,
                         BUILTIN_MUL,
                         BUILTIN_ASSIGN,
                         BUILTIN_EQ,
                         BUILTIN_NEQ,
+                        BUILTIN_LT,
+                        BUILTIN_GT,
+                        BUILTIN_LTE,
+                        BUILTIN_GTE,
                         BUILTIN_ARRAY_INDEXING,
                         BUILTIN_UNARY_NEG,
+                        BUILTIN_UNARY_ADDRESSOF,
+                        BUILTIN_UNARY_DEREF,
+                        BUILTIN_UNARY_BITNOT,
                     } op;
                 } builtin;
 
@@ -130,6 +138,7 @@ typedef struct TokenCursor {
 } TokenCursor;
 
 extern void init_parser();
+extern const char* builtin_name(enum BuiltinOp op);
 extern void parse_file(Program *prog, const char *filename);
 extern void print_ast(NodeIdx nidx, int depth);
 AstNode *get_node(NodeIdx idx);
