@@ -55,6 +55,29 @@ fn life_generation() {
     };
 }
 
+fn memcpy(dest: &u8, src: &u8, len: u16) {
+    while (len != 0u16) {
+        *dest = *src;
+        dest = dest + 1u16;
+        src = src + 1u16;
+        len = len - 1u16;
+    }
+}
+
+fn copy_tiles_to_vram() {
+    //memcpy(0x9000 as &u8, tiles as &u8, tiles_end-tiles);
+    asm("
+        ld hl, tiles_end - tiles
+        push hl
+        ld hl, tiles
+        push hl
+        ld hl, $9000
+        push hl
+        call memcpy
+        add sp, 6
+    ")
+}
+
 fn lcd_off() {
     *(0xff40 as &u8) = 0;
 }
@@ -64,6 +87,15 @@ fn lcd_on() {
 }
 
 fn main() {
+    /*
+        di
+        ; enable gamepad interrupt
+        ld a, %10000
+        ld [$ffff], a
+    */
+    // turn off sound
+    *(0xff26 as &u8) = 0;
+
     asm("
 rNR52 equ $ff26 ; enable/disable sound (and channels)
 rLCDC equ $ff40
@@ -75,9 +107,6 @@ rBGP equ $ff47 ; window palette data
 
         di
 
-        ; enable gamepad interrupt
-        ld a, %10000
-        ld [$ffff], a
 
         ; turn off sound
         xor a
@@ -105,7 +134,7 @@ rBGP equ $ff47 ; window palette data
             call Memset
 
             ; copy tile data to vram
-            call CopyTilesToVRAM
+            call copy_tiles_to_vram
             ; set palette (4 greyscale)
             ld a, %11100100
             ld [rBGP], a
@@ -213,13 +242,6 @@ WaitLY144:
         cp a, 144  ; in vblank?
         jr nz, WaitLY144
         ret
-
-CopyTilesToVRAM:
-    ; fn ()
-        ld hl, $9000
-        ld de, tiles
-        ld bc, tiles_end - tiles
-        jp Memcpy
 
 Memcpy:
     ; fn (hl: dest, de: src, bc: length)

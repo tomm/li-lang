@@ -8,7 +8,7 @@
 
 typedef struct Str {
     char *s;
-    size_t len;
+    int32_t len;
 } Str;
 
 static inline void Str_free(Str s) { free(s.s); }
@@ -18,7 +18,7 @@ static inline bool Str_eq2(Str a, Str b) {
     return memcmp(a.s, b.s, a.len) == 0;
 }
 static inline bool Str_eq(Str s, char *t) {
-    return Str_eq2(s, (Str) { .s = t, .len = strlen(t) });
+    return Str_eq2(s, (Str) { .s = t, .len = (int32_t)strlen(t) });
 }
 static inline char *Str_to_malloced_cstr(Str s) {
     char *t = (char*)malloc(s.len+1);

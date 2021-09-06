@@ -4,6 +4,10 @@
 * pointer arithmetic
 * passing arrays by value
 * structs
+* logical and/or on U16?
+* &T - int
+* int + &T
+* &T - &T
 
 missing operators:
   /

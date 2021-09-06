@@ -299,7 +299,18 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     if (v1.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
     }
-    _i("ld [hl], b");
+    switch (op) {
+        case BUILTIN_ASSIGN:
+            _i("ld [hl], b");
+            break;
+        case BUILTIN_PLUSASSIGN:
+            _i("ld a, [hl]");
+            _i("add a, b");
+            _i("ld [hl], a");
+            break;
+        default:
+            assert(false);
+    }
     return (Value) { .typeId = U8, .storage = ST_REG_EA };
 }
 
@@ -373,6 +384,56 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
     _i("ld e, b");
     _i("ld d, 0");
+    if (contained->size != 1) {
+        _i("ld hl, %d", contained->size);
+        _i("call __mulu16");
+        _i("ld d, h");
+        _i("ld e, l");
+    }
+    v1 = emit_pop(v1, frame, false);
+    _i("add hl, de");
+    return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
+}
+
+Value emit_ptr_add_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
+    assert(get_type(v1.typeId)->type == TT_PTR);
+    const Type *ref = get_type(get_type(v1.typeId)->ptr.ref);
+
+    v2 = emit_value_to_register(v2, true);   // v2 in `de`
+    if (ref->size != 1) {
+        _i("ld hl, %d", ref->size);
+        _i("call __mulu16");
+        _i("ld d, h");
+        _i("ld e, l");
+    }
+    v1 = emit_pop(v1, frame, false);
+    v1 = emit_value_to_register(v1, false);   // v1 in `hl`
+    _i("add hl, de");
+    return (Value) { .storage = ST_REG_VAL, .typeId = v1.typeId };
+}
+
+Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
+    assert(get_type(v1.typeId)->type == TT_ARRAY);
+    assert(v1.storage == ST_REG_EA);
+    const Type *contained = get_type(get_type(v1.typeId)->array.contained);
+
+    v2 = emit_value_to_register(v2, true);   // v2 in `de`
     if (contained->size != 1) {
         _i("ld hl, %d", contained->size);
         _i("call __mulu16");
@@ -653,6 +714,7 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_UNARY_ADDRESSOF, -1 /* accept any */, TT_PRIM_VOID, emit_addressof },
     { BUILTIN_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, emit_ptr_deref },
     { BUILTIN_ASSIGN, TT_PTR, TT_PTR, emit_assign_u16 },
+    { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, emit_ptr_add_u16 },
 
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
@@ -665,6 +727,7 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
@@ -681,6 +744,7 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, emit_array_indexing_u16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
@@ -722,13 +786,13 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
     }
     if (n_args == 1) {
         Str typename_ = get_type(arg1->expr.eval_type)->name;
-        fatal_error(n->start_token, "Invalid operands to %s: %.*s",
+        fatal_error(n->start_token, "LR35902 backend does not support operator %s with %.*s argument",
                 builtin_name(op),
                 (int)typename_.len, typename_.s);
     } else {
         Str typename1 = get_type(arg1->expr.eval_type)->name;
         Str typename2 = get_type(get_node(arg1->next_sibling)->expr.eval_type)->name;
-        fatal_error(n->start_token, "Invalid operands to %s: %.*s and %.*s",
+        fatal_error(n->start_token, "LR35902 backend does not support operator %s with %.*s and %.*s arguments",
                 builtin_name(op),
                 (int)typename1.len, typename1.s,
                 (int)typename2.len, typename2.s);

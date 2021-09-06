@@ -104,6 +104,7 @@ typedef struct AstNode {
                         BUILTIN_UNARY_LOGICAL_NOT,
                         BUILTIN_MUL,
                         BUILTIN_ASSIGN,
+                        BUILTIN_PLUSASSIGN,
                         BUILTIN_EQ,
                         BUILTIN_NEQ,
                         BUILTIN_LT,

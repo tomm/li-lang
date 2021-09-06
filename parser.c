@@ -18,6 +18,7 @@ const char* builtin_name(enum BuiltinOp op) {
         case BUILTIN_UNARY_LOGICAL_NOT: return "logical not";
         case BUILTIN_MUL: return "multiply";
         case BUILTIN_ASSIGN: return "assignment";
+        case BUILTIN_PLUSASSIGN: return "+=";
         case BUILTIN_EQ: return "equality";
         case BUILTIN_NEQ: return "inequality";
         case BUILTIN_LT: return "less than";
@@ -115,7 +116,7 @@ static NodeIdx alloc_node() {
 static void parse_error(const char *msg, enum TokType expected, const Token *got) __attribute__((noreturn));
 static void parse_error(const char *msg, enum TokType expected, const Token *got)
 {
-    fatal_error(got, "%s (expected %s but found %s)", msg, token_type_cstr(expected), token_type_cstr(got->type));
+    fatal_error(got, "%s: expected %s but found %s", msg, token_type_cstr(expected), token_type_cstr(got->type));
 }
 
 AstNode *get_node(NodeIdx idx) { return vec_get(&_node_alloc, idx); }
@@ -152,7 +153,7 @@ static bool check(TokenCursor *toks, enum TokType type) {
 
 static TypeId parse_type(TokenCursor *toks);
 static NodeIdx parse_expression(TokenCursor *toks);
-static NodeIdx parse_list_expression(TokenCursor *toks);
+static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator);
 
 static NodeIdx parse_asm_expression(TokenCursor *toks) {
     // 'asm' identifier already chomped
@@ -237,7 +238,7 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
             }
         case T_LPAREN:
             {
-                NodeIdx expr = parse_list_expression(toks);
+                NodeIdx expr = parse_list_expression(toks, T_RPAREN);
                 chomp(toks, T_RPAREN);
                 return expr;
             }
@@ -288,7 +289,7 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
             chomp(toks, T_LSQBRACKET);
             ChildCursor args = ChildCursor_init();
             ChildCursor_append(&args, n);
-            ChildCursor_append(&args, parse_list_expression(toks));
+            ChildCursor_append(&args, parse_list_expression(toks, T_RSQBRACKET));
             chomp(toks, T_RSQBRACKET);
 
             n = alloc_node();
@@ -541,7 +542,7 @@ static NodeIdx parse_conditional_expression(TokenCursor *toks) {
         const Token *t = chomp(toks, T_WHILE);
         NodeIdx condition = parse_expression(toks);
         chomp(toks, T_LBRACE);
-        NodeIdx body = parse_list_expression(toks);
+        NodeIdx body = parse_list_expression(toks, T_RBRACE);
         chomp(toks, T_RBRACE);
 
         NodeIdx while_loop = alloc_node();
@@ -563,14 +564,14 @@ static NodeIdx parse_conditional_expression(TokenCursor *toks) {
 
         NodeIdx condition = parse_expression(toks);
         chomp(toks, T_LBRACE);
-        NodeIdx on_true = parse_list_expression(toks);
+        NodeIdx on_true = parse_list_expression(toks, T_RBRACE);
         chomp(toks, T_RBRACE);
         NodeIdx on_false = 0;
 
         if (tok_peek(toks, 0)->type == T_ELSE) {
             chomp(toks, T_ELSE);
             chomp(toks, T_LBRACE);
-            on_false = parse_list_expression(toks);
+            on_false = parse_list_expression(toks, T_RBRACE);
             chomp(toks, T_RBRACE);
         }
 
@@ -598,9 +599,10 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
     NodeIdx n = parse_conditional_expression(toks);
 
     // right associative
-    if (tok_peek(toks, 0)->type == T_ASSIGN)
+    if (tok_peek(toks, 0)->type == T_ASSIGN ||
+        tok_peek(toks, 0)->type == T_PLUSASSIGN)
     {
-        const Token *t = chomp(toks, T_ASSIGN);
+        const Token *t = tok_next(toks);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -613,7 +615,11 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
-                    .op = BUILTIN_ASSIGN,
+                    .op = t->type == T_ASSIGN
+                        ? BUILTIN_ASSIGN
+                        : t->type == T_PLUSASSIGN
+                        ? BUILTIN_PLUSASSIGN
+                        : (assert(false), 0),
                     .first_arg = args.first_child
                 }
             }
@@ -627,14 +633,14 @@ static NodeIdx parse_expression(TokenCursor *toks) {
     return parse_assignment_expression(toks);
 }
 
-static NodeIdx parse_localscope_expression(TokenCursor *toks) {
+static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator) {
     if (tok_peek(toks, 0)->type == T_VAR) {
         const Token *start_token = chomp(toks, T_VAR);
         const Token *name = chomp(toks, T_IDENT);
         chomp(toks, T_COLON);
         TypeId type = parse_type(toks);
         chomp(toks, T_SEMICOLON);
-        NodeIdx scoped_expr = parse_list_expression(toks);
+        NodeIdx scoped_expr = parse_list_expression(toks, terminator);
 
         NodeIdx scope = alloc_node();
         set_node(scope, &(AstNode) {
@@ -655,14 +661,14 @@ static NodeIdx parse_localscope_expression(TokenCursor *toks) {
     }
 }
 
-static NodeIdx parse_list_expression(TokenCursor *toks) {
+static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator) {
     ChildCursor exprs = ChildCursor_init();
     
     const Token *start_token = tok_peek(toks, 0);
     bool is_void = false;
 
-    while (tok_peek(toks, 0)->type != T_RBRACE) {
-        ChildCursor_append(&exprs, parse_localscope_expression(toks));
+    while (tok_peek(toks, 0)->type != terminator) {
+        ChildCursor_append(&exprs, parse_localscope_expression(toks, terminator));
         is_void = false;
         if (tok_peek(toks, 0)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
@@ -837,7 +843,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
         chomp(toks, T_SEMICOLON);
     } else {
         chomp(toks, T_LBRACE);
-        body = parse_list_expression(toks);
+        body = parse_list_expression(toks, T_RBRACE);
         chomp(toks, T_RBRACE);
     }
 
@@ -988,6 +994,11 @@ void parse_file(Program *prog, const char *filename) {
     TokenCursor toks = { .tokens = token_vec, .next = 0 };
     prog->root = parse_module(&toks);
     collect_symbols(prog);
+
+    printf("%d KiB of input code\n", buf.len/1024);
+    printf("%ld KiB in %ld tokens\n", sizeof(Token)*token_vec.len/1024, token_vec.len);
+    printf("%ld KiB in %ld AST tree nodes\n", sizeof(AstNode)*_node_alloc.len/1024,
+            _node_alloc.len);
 }
 
 static void _indent(int depth) {

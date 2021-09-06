@@ -23,6 +23,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_FN: return "fn";
         case T_VAR: return "var";
         case T_ASSIGN: return "=";
+        case T_PLUSASSIGN: return "+=";
         case T_EXCLAMATION: return "!";
         case T_EQ: return "==";
         case T_NEQ: return "!=";
@@ -72,6 +73,7 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '~') { EMIT(((Token) { T_TILDE, line, col, filename })); NEXT(); }
         else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
+        else if (*pos == '+' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_PLUSASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_AMPERSAND, line, col, filename })); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_PIPE, line, col, filename })); NEXT(); }

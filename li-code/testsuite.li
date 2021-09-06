@@ -105,6 +105,9 @@ fn main() {
     if test_arr_2d_u16[0][1] != 0x1233 { fail_() } else { pass() };
     if test_arr_2d_u16[1][0] != 0x2466 { fail_() } else { pass() };
     if test_arr_2d_u16[1][1] != 0x369a { fail_() } else { pass() };
+    // with u16 indexes
+    test_arr_2d_u16[1u16][1u16] = 513;
+    if test_arr_2d_u16[1u16][1u16] != 513 { fail_() } else { pass() };
 
     // if expression
     if (if 1 {0xcafe} else {0xdead}) == 0xcafe { pass() } else { fail_() };
@@ -150,6 +153,15 @@ fn main() {
     //if 0x3456>0x3457 { fail_() } else { pass() };
     //if 0xcafe>0xcafe { fail_() } else { pass() };
 
+    (
+        var x: u8;
+        x = 0;
+        x += 1;
+        if x != 1 { fail_() } else { pass() };
+        x += 5;
+        if x != 6 { fail_() } else { pass() };
+    );
+
     output_results();
 }
 
@@ -164,6 +176,18 @@ test_fwd_decl:
 `);
 
 fn test_ptr_arith() {
+    var a: [u16; 4];
+    var p: &u16;
+    p = &a[0];
+    *p = 1u16;
+    p = p + 1u16;
+    *p = 2u16;
+    p = p + 2u16;
+    *p = 4u16;
+
+    if a[0] != 1u16 { fail_() } else { pass() };
+    if a[1] != 2u16 { fail_() } else { pass() };
+    if a[3] != 4u16 { fail_() } else { pass() };
 }
 
 fn test_ptr_arg(a: &u16) {

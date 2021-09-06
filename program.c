@@ -30,81 +30,108 @@ static Variable *scope_lookup(Vec *scope, Str name) {
 
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr);
 
+typedef struct ValidBuiltin {
+    enum BuiltinOp op;
+    enum TypeType arg1;
+    enum TypeType arg2;
+    TypeId ret;
+} ValidBuiltin;
+
+static const ValidBuiltin valid_builtins[] = {
+    { BUILTIN_UNARY_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
+    { BUILTIN_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
+    { BUILTIN_ASSIGN, TT_PTR, TT_PTR, -1 },
+    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
+    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
+    { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, -1 },
+
+    { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_GT, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_LT, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+
+    { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, U8 },
+    { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, U8 },
+    { BUILTIN_GT, TT_PRIM_U16, TT_PRIM_U16, U8 },
+    { BUILTIN_LT, TT_PRIM_U16, TT_PRIM_U16, U8 },
+    { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U16, TT_PRIM_VOID, U8 },
+
+    { BUILTIN_LOGICAL_AND, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_LOGICAL_OR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { -1 }
+};
+
 static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
     AstNode *n = get_node(expr);
-    TypeId t = TYPE_UNKNOWN;
     enum BuiltinOp op = n->expr.builtin.op;
 
-    switch (op) {
-        case BUILTIN_UNARY_ADDRESSOF:
-            {
-                assert (ast_node_sibling_size(n->expr.builtin.first_arg) == 1);
-                NodeIdx arg = n->expr.builtin.first_arg;
-                t = typecheck_expr(prog, scope, arg);
-                t = make_ptr_type(t);
-            }
-            break;
-        case BUILTIN_UNARY_DEREF:
-            {
-                assert (ast_node_sibling_size(n->expr.builtin.first_arg) == 1);
-                NodeIdx arg = n->expr.builtin.first_arg;
-                t = typecheck_expr(prog, scope, arg);
-                if (get_type(t)->type != TT_PTR) {
-                    fatal_error(n->start_token, "Can not dereference non-pointer type '%.*s'",
-                            (int)get_type(t)->name.len,
-                            get_type(t)->name.s);
-                }
-                t = get_type(t)->ptr.ref;
-            }
-            break;
-        case BUILTIN_ARRAY_INDEXING:
-            {
-                if (ast_node_sibling_size(n->expr.builtin.first_arg) != 2) {
-                    fatal_error(n->start_token, "Malformed array indexing");
-                }
-                TypeId arr = typecheck_expr(prog, scope, n->expr.builtin.first_arg);
-                TypeId idx = typecheck_expr(prog, scope, get_node(n->expr.builtin.first_arg)->next_sibling);
+    const int num_args = ast_node_sibling_size(n->expr.builtin.first_arg);
+    assert(num_args == 1 || num_args == 2);
 
-                if (get_type(arr)->type != TT_ARRAY) {
-                    fatal_error(n->start_token, "Array index on non-array type '%.*s'",
-                            (int)get_type(arr)->name.len,
-                            get_type(arr)->name.s);
-                }
-                if (idx != U16 && idx != U8) {
-                    fatal_error(n->start_token, "Array index must be u8 or u16 type");
-                }
+    NodeIdx arg1 = n->expr.builtin.first_arg;
+    NodeIdx arg2 = get_node(arg1)->next_sibling;
 
-                t = get_type(arr)->array.contained;
-            }
-            break;
-        default:
-            // Expect argument types to match
-            assert (ast_node_sibling_size(n->expr.builtin.first_arg) > 0);
-            NodeIdx arg = n->expr.builtin.first_arg;
-            t = typecheck_expr(prog, scope, arg);
-            while (get_node(arg)->next_sibling != 0) {
-                arg = get_node(arg)->next_sibling;
-                TypeId t2 = typecheck_expr(prog, scope, arg);
-                if (!is_type_eq(t2, t)) {
-                    fatal_error(get_node(arg)->start_token, "operator expects matching argument types. found '%.*s' and '%.*s'",
-                            (int)get_type(t)->name.len,
-                            get_type(t)->name.s,
-                            (int)get_type(t2)->name.len,
-                            get_type(t2)->name.s);
+    TypeId t1 = typecheck_expr(prog, scope, arg1);
+    TypeId t2 = num_args == 2 ? typecheck_expr(prog, scope, arg2) : VOID;
+
+    enum TypeType tt1 = get_type(t1)->type;
+    enum TypeType tt2 = t2 ? get_type(t2)->type : TT_PRIM_VOID;
+
+    // do the argument types match a valid builtin?
+    for (int i=0; valid_builtins[i].op != -1; ++i) {
+        const ValidBuiltin *v = &valid_builtins[i];
+        if (v->op == op &&
+            (v->arg1 == -1 || v->arg1 == tt1) &&
+            (v->arg2 == -1 || v->arg2 == tt2)) {
+            if (v->ret == -1) {
+                // special handling of return type
+                switch (op) {
+                    case BUILTIN_UNARY_ADDRESSOF:
+                        return make_ptr_type(t1);
+                    case BUILTIN_UNARY_DEREF:
+                        return get_type(t1)->ptr.ref;
+                    case BUILTIN_ADD:
+                        if (tt1 == TT_PTR) return t1;
+                        else assert(false);
+                    case BUILTIN_ASSIGN:
+                        return t1;
+                    case BUILTIN_ARRAY_INDEXING:
+                        return get_type(t1)->array.contained;
+                    default: assert(false);
                 }
+            } else {
+                return v->ret;
             }
-            // actually boolean, but using u8 for now
-            if (op == BUILTIN_EQ ||
-                op == BUILTIN_NEQ ||
-                op == BUILTIN_LOGICAL_OR ||
-                op == BUILTIN_LOGICAL_AND ||
-                op == BUILTIN_UNARY_LOGICAL_NOT) {
-                t = U8;
-            }
-            break;
+        }
     }
-
-    return t;
+    fatal_error(n->start_token, "invalid arguments to operator %s: '%.*s' and '%.*s'",
+            builtin_name(op),
+            (int)get_type(t1)->name.len,
+            get_type(t1)->name.s,
+            (int)get_type(t2)->name.len,
+            get_type(t2)->name.s);
 }
 
 
