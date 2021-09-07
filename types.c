@@ -81,6 +81,27 @@ TypeId make_ptr_type(TypeId ref) {
     });
 }
 
+TypeId make_array_type(int num_elems, TypeId contained) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "[%.*s; %d]",
+            (int)get_type(contained)->name.len,
+            get_type(contained)->name.s,
+            num_elems);
+    // XXX this is never deallocated (but the compiler has no teardown anyhow...)
+    char *type_name = strdup(buf);
+    const int byte_size = get_type(contained)->size * num_elems;
+    return add_type((Type) {
+        .type = TT_ARRAY,
+        .name = { .s = type_name, .len = strlen(type_name) },
+        .size = byte_size,
+        .stack_size = byte_size,
+        .stack_offset = 0,
+        .array = {
+            .contained = contained
+        }
+    });
+}
+
 bool is_type_eq(TypeId a, TypeId b) {
     Type *ta = get_type(a);
     Type *tb = get_type(b);

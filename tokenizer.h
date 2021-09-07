@@ -36,6 +36,7 @@ typedef struct Token {
         T_RETURN,
         T_FN,
         T_VAR,
+        T_CONST,
         T_IDENT,
         T_LITERAL_STR,
         T_LITERAL_U8,

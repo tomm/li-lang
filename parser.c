@@ -186,8 +186,11 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                     .start_token = t,
                     .type = AST_EXPR,
                     .expr = {
-                        .type = EXPR_LITERAL_U8,
-                        .literal_int = t->int_literal
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_U8,
+                            .literal_int = t->int_literal
+                        }
                     }
                 });
                 return expr;
@@ -199,8 +202,38 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                     .start_token = t,
                     .type = AST_EXPR,
                     .expr = {
-                        .type = EXPR_LITERAL_U16,
-                        .literal_int = t->int_literal
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_U16,
+                            .literal_int = t->int_literal
+                        }
+                    }
+                });
+                return expr;
+            }
+        case T_LSQBRACKET:
+            {
+                ChildCursor args = ChildCursor_init();
+                while (tok_peek(toks, 0)->type != T_RSQBRACKET) {
+                    ChildCursor_append(&args, parse_expression(toks));
+                    if (tok_peek(toks, 0)->type == T_COMMA) {
+                        chomp(toks, T_COMMA);
+                    } else {
+                        break;
+                    }
+                }
+                chomp(toks, T_RSQBRACKET);
+
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_ARRAY,
+                            .literal_array_first_val = args.first_child
+                        }
                     }
                 });
                 return expr;
@@ -212,8 +245,11 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                     .start_token = t,
                     .type = AST_EXPR,
                     .expr = {
-                        .type = EXPR_LITERAL_STR,
-                        .literal_str = t->str_literal
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_STR,
+                            .literal_str = t->str_literal
+                        }
                     }
                 });
                 return expr;
@@ -240,6 +276,12 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
             {
                 NodeIdx expr = parse_list_expression(toks, T_RPAREN);
                 chomp(toks, T_RPAREN);
+                return expr;
+            }
+        case T_LBRACE:
+            {
+                NodeIdx expr = parse_list_expression(toks, T_RBRACE);
+                chomp(toks, T_RBRACE);
                 return expr;
             }
         default:
@@ -684,7 +726,12 @@ static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator)
         set_node(void_node, &(AstNode) {
             .type = AST_EXPR,
             .start_token = start_token,
-            .expr = { .type = EXPR_LITERAL_VOID }
+            .expr = {
+                .type = EXPR_LITERAL,
+                .literal = {
+                    .type = LIT_VOID
+                }
+            }
         });
 
         ChildCursor_append(&exprs, void_node);
@@ -728,33 +775,14 @@ static TypeId parse_type(TokenCursor *toks) {
             parse_error("Expected array length", T_LITERAL_U16, size);
         }
         chomp(toks, T_RSQBRACKET);
-        const int byte_size = get_type(contained)->size * size->int_literal;
-
-        char buf[256];
-        snprintf(buf, sizeof(buf), "[%.*s; %d]",
-                (int)get_type(contained)->name.len,
-                get_type(contained)->name.s,
-                size->int_literal);
-        // XXX this is never deallocated (but the compiler has no teardown anyhow...)
-        char *type_name = strdup(buf);
-
-        return add_type((Type) {
-            .type = TT_ARRAY,
-            .name = { .s = type_name, .len = strlen(type_name) },
-            .size = byte_size,
-            .stack_size = byte_size,
-            .stack_offset = 0,
-            .array = {
-                .contained = contained
-            }
-        });
+        return make_array_type(size->int_literal, contained);
     }
     else {
         parse_error("Expected variable name", T_IDENT, t);
     }
 }
 
-static NodeIdx parse_var_def(TokenCursor *toks) {
+static NodeIdx parse_var_def(TokenCursor *toks, bool is_const) {
     NodeIdx var = alloc_node();
 
     // expect variable name
@@ -764,8 +792,20 @@ static NodeIdx parse_var_def(TokenCursor *toks) {
         parse_error("Expected variable name", T_IDENT, t);
     }
 
-    chomp(toks, T_COLON);
-    TypeId type = parse_type(toks);
+    TypeId type = TYPE_UNKNOWN;
+    if (tok_peek(toks, 0)->type == T_COLON) {
+        chomp(toks, T_COLON);
+        type = parse_type(toks);
+    }
+
+    NodeIdx value = 0;
+    if (tok_peek(toks, 0)->type == T_ASSIGN) {
+        chomp(toks, T_ASSIGN);
+        value = parse_primary_expression(toks);
+    } else if (is_const) {
+        fatal_error(tok_peek(toks, 0), "Expected assignment to constant");
+    }
+
     chomp(toks, T_SEMICOLON);
 
     set_node(var, &(AstNode) {
@@ -774,6 +814,8 @@ static NodeIdx parse_var_def(TokenCursor *toks) {
         .var_def = {
             .name = t->ident,
             .type = type,
+            .is_const = is_const,
+            .value = value
         }
     });
 
@@ -868,6 +910,10 @@ static void collect_symbols(Program *prog) {
     for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
         AstNode *n = get_node(node);
         if (n->type == AST_FN) {
+            if (lookup_program_symbol(prog, n->fn.name) != NULL) {
+                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
+                        n->fn.name.len, n->fn.name.s);
+            }
             vec_push(&prog->symbols, &(Symbol) {
                 .name = n->fn.name,
                 .obj = node,
@@ -875,6 +921,10 @@ static void collect_symbols(Program *prog) {
             });
         }
         else if (n->type == AST_DEF_VAR) {
+            if (lookup_program_symbol(prog, n->var_def.name) != NULL) {
+                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
+                        n->var_def.name.len, n->var_def.name.s);
+            }
             vec_push(&prog->symbols, &(Symbol) {
                 .name = n->var_def.name,
                 .obj = node,
@@ -911,7 +961,8 @@ static void parse_include(ChildCursor *module_children, const Token *filename) {
     TokenCursor toks = { .tokens = token_vec, .next = 0 };
     parse_module_body(&toks, module_children);
 
-    free(filename_);
+    // XXX Can't free since Tokens refer to filename
+    //free(filename_);
 }
 
 static void parse_module_body(TokenCursor *toks, ChildCursor *children)
@@ -921,8 +972,11 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
         t = tok_next(toks);
 
         switch (t->type) {
+            case T_CONST:
+                ChildCursor_append(children, parse_var_def(toks, true));
+                break;
             case T_VAR:
-                ChildCursor_append(children, parse_var_def(toks));
+                ChildCursor_append(children, parse_var_def(toks, false));
                 break;
             case T_FN:
                 ChildCursor_append(children, parse_function(toks));
@@ -1091,17 +1145,23 @@ void print_ast(NodeIdx nidx, int depth) {
                     Str_puts(node->expr.ident, stdout);
                     printf("\n");
                     break;
-                case EXPR_LITERAL_U8:
-                    printf("literal u8 (%d)\n", node->expr.literal_int);
-                    break;
-                case EXPR_LITERAL_U16:
-                    printf("literal u16 (%d)\n", node->expr.literal_int);
-                    break;
-                case EXPR_LITERAL_STR:
-                    printf("literal str (%.*s)\n", (int)node->expr.literal_str.len, node->expr.literal_str.s);
-                    break;
-                case EXPR_LITERAL_VOID:
-                    printf("literal void\n");
+                case EXPR_LITERAL:
+                    switch (node->expr.literal.type) {
+                        case LIT_U8:
+                            printf("literal u8 (%d)\n", node->expr.literal.literal_int);
+                            break;
+                        case LIT_U16:
+                            printf("literal u16 (%d)\n", node->expr.literal.literal_int);
+                            break;
+                        case LIT_STR:
+                            printf("literal str (%.*s)\n", (int)node->expr.literal.literal_str.len, node->expr.literal.literal_str.s);
+                            break;
+                        case LIT_VOID:
+                            printf("literal void\n");
+                            break;
+                        case LIT_ARRAY:
+                            printf("literal array\n");
+                    }
                     break;
                 case EXPR_WHILE_LOOP:
                     printf("while\n");

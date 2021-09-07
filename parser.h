@@ -37,16 +37,15 @@ typedef struct AstNode {
         struct {
             Str name;
             TypeId type;
+            bool is_const;
+            NodeIdx value;
         } var_def;
 
         struct {
             enum ExprType {
                 EXPR_LIST,  // like C comma operator, but using ;
                 EXPR_IDENT,
-                EXPR_LITERAL_VOID,
-                EXPR_LITERAL_U8,
-                EXPR_LITERAL_U16,
-                EXPR_LITERAL_STR,
+                EXPR_LITERAL,
                 EXPR_CALL,
                 EXPR_ASM,
                 EXPR_BUILTIN,
@@ -59,6 +58,18 @@ typedef struct AstNode {
             TypeId eval_type;
 
             union {
+                struct {
+                    enum LiteralType {
+                        LIT_VOID, LIT_U8, LIT_U16, LIT_STR, LIT_ARRAY
+                    } type;
+
+                    union {
+                        int literal_int;
+                        Str literal_str;
+                        NodeIdx literal_array_first_val;
+                    };
+                } literal;
+
                 struct {
                     Str var_name;
                     TypeId var_type;
@@ -81,10 +92,6 @@ typedef struct AstNode {
                 } list;
 
                 Str ident;
-
-                int literal_int;
-
-                Str literal_str;
 
                 struct {
                     NodeIdx callee;

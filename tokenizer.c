@@ -22,6 +22,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_ACUTE: return "^";
         case T_FN: return "fn";
         case T_VAR: return "var";
+        case T_CONST: return "const";
         case T_ASSIGN: return "=";
         case T_PLUSASSIGN: return "+=";
         case T_EXCLAMATION: return "!";
@@ -144,6 +145,8 @@ Vec lex(Str buf, const char *filename) {
                 EMIT(((Token) { T_FN, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "var")) {
                 EMIT(((Token) { T_VAR, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "const")) {
+                EMIT(((Token) { T_CONST, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "if")) {
                 EMIT(((Token) { T_IF, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "else")) {

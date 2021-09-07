@@ -51,5 +51,6 @@ TypeId lookup_type(Str name);
 Type *get_type(TypeId id);
 bool is_type_eq(TypeId a, TypeId b);
 TypeId make_ptr_type(TypeId ref);
+TypeId make_array_type(int num_elems, TypeId contained);
 
 #endif /* TYPES_H */

@@ -28,7 +28,7 @@ syntax keyword liStatement      return
 "syntax keyword liAssert         assert
 "syntax keyword liClassDecl      extends with implements
 syntax keyword liBranch         break continue nextgroup=liUserLabelRef skipwhite
-syntax keyword liKeyword        fn var asm include as
+syntax keyword liKeyword        fn var asm include as const
 "syntax match   liUserLabelRef   "\k\+" contained
 
 "syntax region  liLabelRegion   transparent matchgroup=liLabel start="\<case\>" matchgroup=NONE end=":"

@@ -997,17 +997,25 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             break;
         case EXPR_IDENT:
             return emit_identifier(expr, frame);
-        case EXPR_LITERAL_U8:
-            _i("ld a, $%x", n->expr.literal_int);
-            v = (Value) { .typeId = U8, .storage = ST_REG_VAL };
-            break;
-        case EXPR_LITERAL_U16:
-            _i("ld hl, $%x", n->expr.literal_int);
-            v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
-            break;
-        case EXPR_LITERAL_VOID:
-            // the semicolon at the end of a list of expressions :)
-            v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+        case EXPR_LITERAL:
+            switch (n->expr.literal.type) {
+                case LIT_U8:
+                    _i("ld a, $%x", n->expr.literal.literal_int);
+                    v = (Value) { .typeId = U8, .storage = ST_REG_VAL };
+                    break;
+                case LIT_U16:
+                    _i("ld hl, $%x", n->expr.literal.literal_int);
+                    v = (Value) { .typeId = U16, .storage = ST_REG_VAL };
+                    break;
+                case LIT_VOID:
+                    // the semicolon at the end of a list of expressions :)
+                    v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
+                    break;
+                case LIT_STR:
+                case LIT_ARRAY:
+                    assert(false);
+                    break;
+            }
             break;
         case EXPR_CAST:
             return emit_cast(expr, frame);
@@ -1017,7 +1025,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_while_loop(expr, frame);
         case EXPR_LOCAL_SCOPE:
             return emit_local_scope(expr, frame);
-        case EXPR_LITERAL_STR:
+        default:
             assert(false);
     }
     return v;
@@ -1064,10 +1072,8 @@ static int get_max_local_vars_size(NodeIdx n)
             }
             break;
         case EXPR_IDENT:
-        case EXPR_LITERAL_U8:
-        case EXPR_LITERAL_U16:
-        case EXPR_LITERAL_STR:
-        case EXPR_LITERAL_VOID:
+            break;
+        case EXPR_LITERAL:
             break;
         case EXPR_CALL:
             for (int c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {
@@ -1153,12 +1159,46 @@ static Value emit_fn(NodeIdx fn) {
     return ret_val;
 }
 
+static void _emit_const(NodeIdx node) {
+    AstNode *n = get_node(node);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_LITERAL);
+
+    switch (n->expr.literal.type) {
+        case LIT_U8:
+            _i("db %d", n->expr.literal.literal_int & 0xff);
+            break;
+        case LIT_U16:
+            _i("dw %d", n->expr.literal.literal_int & 0xffff);
+            break;
+        case LIT_VOID:
+            break;
+        case LIT_STR:
+            _i("db \"%.*s\"",
+                    n->expr.literal.literal_str.len,
+                    n->expr.literal.literal_str.s);
+            break;
+        case LIT_ARRAY:
+            for (int child=n->expr.literal.literal_array_first_val; child!=0; child=get_node(child)->next_sibling) {
+                _emit_const(child);
+            }
+            break;
+    }
+}
+
+static void emit_const(NodeIdx node) {
+    AstNode *n = get_node(node);
+    assert(n->type == AST_DEF_VAR && n->var_def.is_const);
+
+    __("%.*s:", n->var_def.name.len, n->var_def.name.s);
+    _emit_const(n->var_def.value);
+}
+
 static void emit_ram_globals() {
     __("\nSECTION \"workram\", WRAM0");
     
     for (int i=0; i<_ram_vars.len; ++i) {
         RamVariable v = *(RamVariable*) vec_get(&_ram_vars, i);
-        _i("%.*s: ds %d", (int)v.symbol_name.len, v.symbol_name.s, v.size_bytes);
+        _i("%.*s: ds %d", v.symbol_name.len, v.symbol_name.s, v.size_bytes);
     }
 }
 
@@ -1186,7 +1226,11 @@ void output_lr35902(Program *prog) {
             }
         }
         else if (n->type == AST_DEF_VAR) {
-            record_def_var(node);
+            if (n->var_def.is_const) {
+                emit_const(node);
+            } else {
+                record_def_var(node);
+            }
         }
         else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
             fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);

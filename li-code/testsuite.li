@@ -153,6 +153,7 @@ fn main() {
     //if 0x3456>0x3457 { fail_() } else { pass() };
     //if 0xcafe>0xcafe { fail_() } else { pass() };
 
+    // test +=
     (
         var x: u8;
         x = 0;
@@ -162,7 +163,22 @@ fn main() {
         if x != 6 { fail_() } else { pass() };
     );
 
+    test_const_globals();
+
     output_results();
+}
+
+// can tell type, or infer from literal
+const myconst_a: [u8; 12] = "Hello world";
+const myconst_b = 2u16;
+const myconst_c = [[1,2,4,8],[2,3,4,9]];
+
+fn test_const_globals() {
+    if myconst_a[0] != 72 /* XXX need char literals */ { fail_() } else { pass() };
+    if myconst_a[1] != 101 /* XXX need char literals */ { fail_() } else { pass() };
+    if myconst_b != 2u16 { fail_() } else { pass() };
+    if myconst_c[0][0] != 1 { fail_() } else { pass() };
+    if myconst_c[1][1] != 3 { fail_() } else { pass() };
 }
 
 fn test_fwd_decl(a: u8) -> u8;

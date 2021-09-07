@@ -188,71 +188,84 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                 }
             }
             break;
-        case EXPR_LITERAL_U8:
-            t = U8;
-            break;
-        case EXPR_LITERAL_U16:
-            t = U16;
-            break;
-        case EXPR_LITERAL_VOID:
-            t = VOID;
+        case EXPR_LITERAL:
+            switch (n->expr.literal.type) {
+                case LIT_U8:
+                    t = U8;
+                    break;
+                case LIT_U16:
+                    t = U16;
+                    break;
+                case LIT_VOID:
+                    t = VOID;
+                    break;
+                case LIT_STR:
+                    // len+1 to accommodate null terminator
+                    t = make_array_type(n->expr.literal.literal_str.len+1, U8);
+                    break;
+                case LIT_ARRAY:
+                    {
+                        NodeIdx item = n->expr.literal.literal_array_first_val;
+                        if (item == 0) {
+                            fatal_error(n->start_token, "Zero length array literal not permitted");
+                        }
+                        t = typecheck_expr(prog, scope, item);
+                        int len = 1;
+                        while (get_node(item)->next_sibling != 0) {
+                            len++;
+                            item = get_node(item)->next_sibling;
+                            if (!is_type_eq(t, typecheck_expr(prog, scope, item))) {
+                                fatal_error(get_node(item)->start_token, "Unmatched array item type");
+                            }
+                        }
+                        t = make_array_type(len, t);
+                    }
+                    break;
+            }
             break;
         case EXPR_CALL:
             {
                 // is it a built-in op?
                 AstNode *callee = get_node(n->expr.call.callee);
                 if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-                    if (Str_eq(callee->expr.ident, "asm")) {
-                        // emit literal asm
-                        AstNode *arg = get_node(n->expr.call.first_arg);
-                        if (arg->type != AST_EXPR || arg->expr.type != EXPR_LITERAL_STR) {
-                            fatal_error(callee->start_token, "asm() expects string literal argument");
-                        }
-                        if (arg->next_sibling != 0) {
-                            fatal_error(callee->start_token, "asm() takes only one argument");
-                        }
-                        // ok
-                        t = VOID;
-                    } else {
-                        typecheck_expr(prog, scope, n->expr.call.callee);
-                        Symbol *fn_sym = lookup_program_symbol(prog, callee->expr.ident);
+                    typecheck_expr(prog, scope, n->expr.call.callee);
+                    Symbol *fn_sym = lookup_program_symbol(prog, callee->expr.ident);
 
-                        if (fn_sym == NULL) {
-                            fatal_error(callee->start_token, "call to undefined function '%.*s'",
-                                    (int)callee->expr.ident.len, callee->expr.ident.s);
-                        }
-                        AstNode *fn = get_node(fn_sym->obj);
-
-                        if (fn->type != AST_FN) {
-                            fatal_error(callee->start_token, "call to something that is not a function");
-                        }
-                        if (ast_node_sibling_size(fn->fn.first_arg) !=
-                            ast_node_sibling_size(n->expr.call.first_arg)) {
-                            fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
-                                    (int)callee->expr.ident.len, callee->expr.ident.s,
-                                    ast_node_sibling_size(fn->fn.first_arg),
-                                    ast_node_sibling_size(n->expr.call.first_arg));
-                        }
-                        // check each argument
-                        Vec *argdef = &get_type(fn_sym->type)->func.args;
-                        NodeIdx arg = n->expr.call.first_arg;
-
-                        for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
-                            TypeId expected_type = *(TypeId*)vec_get(argdef, i);
-                            TypeId passed_type = typecheck_expr(prog, scope, arg);
-                            if (!is_type_eq(passed_type, expected_type)) {
-                                fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
-                                        i + 1,
-                                        (int)get_type(passed_type)->name.len,
-                                        get_type(passed_type)->name.s,
-                                        (int)get_type(expected_type)->name.len,
-                                        get_type(expected_type)->name.s);
-                            }
-                        }
-
-                        assert(get_type(fn->fn.type)->type == TT_FUNC);
-                        t = get_type(fn->fn.type)->func.ret;
+                    if (fn_sym == NULL) {
+                        fatal_error(callee->start_token, "call to undefined function '%.*s'",
+                                (int)callee->expr.ident.len, callee->expr.ident.s);
                     }
+                    AstNode *fn = get_node(fn_sym->obj);
+
+                    if (fn->type != AST_FN) {
+                        fatal_error(callee->start_token, "call to something that is not a function");
+                    }
+                    if (ast_node_sibling_size(fn->fn.first_arg) !=
+                        ast_node_sibling_size(n->expr.call.first_arg)) {
+                        fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
+                                (int)callee->expr.ident.len, callee->expr.ident.s,
+                                ast_node_sibling_size(fn->fn.first_arg),
+                                ast_node_sibling_size(n->expr.call.first_arg));
+                    }
+                    // check each argument
+                    Vec *argdef = &get_type(fn_sym->type)->func.args;
+                    NodeIdx arg = n->expr.call.first_arg;
+
+                    for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
+                        TypeId expected_type = *(TypeId*)vec_get(argdef, i);
+                        TypeId passed_type = typecheck_expr(prog, scope, arg);
+                        if (!is_type_eq(passed_type, expected_type)) {
+                            fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
+                                    i + 1,
+                                    (int)get_type(passed_type)->name.len,
+                                    get_type(passed_type)->name.s,
+                                    (int)get_type(expected_type)->name.len,
+                                    get_type(expected_type)->name.s);
+                        }
+                    }
+
+                    assert(get_type(fn->fn.type)->type == TT_FUNC);
+                    t = get_type(fn->fn.type)->func.ret;
                 } else {
                     fatal_error(callee->start_token, "fn call by expression not implemented");
                 }
@@ -319,8 +332,6 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
         case EXPR_BUILTIN:
             t = typecheck_builtin(prog, scope, expr);
             break;
-        case EXPR_LITERAL_STR:
-            assert(false);
     }
     n->expr.eval_type = t;
     return t;
@@ -361,11 +372,56 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
     free_localscope(&scope);
 }
 
+static void check_is_literal(Program *prog, NodeIdx node) {
+    AstNode *n = get_node(node);
+    assert(n->type == AST_EXPR);
+    if (n->expr.type != EXPR_LITERAL) {
+        fatal_error(n->start_token, "Expected literal");
+    }
+    switch (n->expr.literal.type) {
+        case LIT_ARRAY:
+            check_is_literal(prog, n->expr.literal.literal_array_first_val);
+            break;
+        case LIT_U8:
+        case LIT_U16:
+        case LIT_VOID:
+        case LIT_STR:
+            break;
+    }
+}
+
+static void typecheck_global(Program *prog, NodeIdx node) {
+    AstNode *n = get_node(node);
+    assert(n->type == AST_DEF_VAR);
+
+    if (n->var_def.is_const == false && n->var_def.value == 0) return;
+    assert(n->var_def.value != 0);
+
+    check_is_literal(prog, n->var_def.value);
+    TypeId v = typecheck_expr(prog, NULL, n->var_def.value);
+
+    if (n->var_def.type == TYPE_UNKNOWN) {
+        n->var_def.type = v;
+        lookup_program_symbol(prog, n->var_def.name)->type = v;
+    }
+
+    if (!is_type_eq(v, n->var_def.type)) {
+        fatal_error(n->start_token, "invalid type assigned to const: expected '%.*s' but found '%.*s'",
+                (int)get_type(n->var_def.type)->name.len,
+                get_type(n->var_def.type)->name.s,
+                (int)get_type(v)->name.len,
+                get_type(v)->name.s);
+    }
+}
+
 /** deduces the eval_type of AST_EXPR nodes, and checks for type errors. */
 void typecheck_program(Program *prog) {
     for (NodeIdx node=get_node(prog->root)->module.first_child; node != 0; node=get_node(node)->next_sibling) {
         if (get_node(node)->type == AST_FN) {
             typecheck_fn(prog, node);
+        }
+        if (get_node(node)->type == AST_DEF_VAR) {
+            typecheck_global(prog, node);
         }
     }
 }
