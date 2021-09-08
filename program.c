@@ -40,7 +40,7 @@ typedef struct ValidBuiltin {
 static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_UNARY_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
     { BUILTIN_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
-    { BUILTIN_ASSIGN, TT_PTR, TT_PTR, -1 },
+    { BUILTIN_ASSIGN, -1, -1, -1 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
     { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, -1 },
@@ -56,7 +56,6 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
@@ -72,7 +71,6 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
@@ -116,6 +114,9 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
                         if (tt1 == TT_PTR) return t1;
                         else assert(false);
                     case BUILTIN_ASSIGN:
+                        if (!is_type_eq(t1, t2)) {
+                            goto error;
+                        }
                         return t1;
                     case BUILTIN_ARRAY_INDEXING:
                         return get_type(t1)->array.contained;
@@ -126,6 +127,7 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
             }
         }
     }
+error:
     fatal_error(n->start_token, "invalid arguments to operator %s: '%.*s' and '%.*s'",
             builtin_name(op),
             (int)get_type(t1)->name.len,
@@ -320,6 +322,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                     (int)get_type(n->expr.local_scope.var_type)->name.len,
                     get_type(n->expr.local_scope.var_type)->name.s);
                     */
+                // infer type of local variable from assignment
+                if (n->expr.local_scope.var_type == TYPE_UNKNOWN &&
+                    n->expr.local_scope.value != 0) {
+                    n->expr.local_scope.var_type = typecheck_expr(prog, scope, n->expr.local_scope.value);
+                }
 
                 scope_push(scope, (Variable) {
                     .name = n->expr.local_scope.var_name,

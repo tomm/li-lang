@@ -1,0 +1,502 @@
+var console_bg: &[[u8; 32]; 32];
+var console_x: u8;
+var console_y: u8;
+
+fn gbconsole_goto(x: u8, y: u8) {
+    console_x = x;
+    console_y = y;
+}
+
+fn gbconsole_puthex(v: u16) {
+    gbconsole_putchar(36); // XXX '$'
+    asm("
+        ; bc = v
+        ld hl, sp+2
+        ld a, [hl+]
+        ld b, [hl]
+        ld c, a
+
+        ld a, b
+        swap a
+        and a, $f
+        jr z, .z4
+        call .putchar_hex
+    .z4
+        ld a, b
+        and a, $f
+        jr z, .z3
+        call .putchar_hex
+    .z3
+        ld a, c
+        swap a
+        and a, $f
+        jr z, .z2
+        call .putchar_hex
+    .z2
+        ld a, c
+        and a, $f
+        call .putchar_hex
+        ret
+        
+    .putchar_hex
+        cp a, 10
+        jr c, .is_lte_9
+        add a, 55 ; ord('A')
+        jr .go
+    .is_lte_9
+        add a, 48 ; ord('0')
+    .go
+        push bc
+        push af
+        call gbconsole_putchar
+        add sp, 2
+        pop bc
+        ret
+    ")
+}
+
+fn gbconsole_putchar(c: u8) {
+    asm("call WaitLY144");
+    if (c == 10) {
+        console_x = 0;
+        console_y += 1;
+    } else {
+        (*console_bg)[console_y][console_x] = c;
+        console_x += 1;
+    };
+    if (console_x == 20) {
+        console_x = 0;
+        console_y += 1;
+    }
+}
+
+fn gbconsole_puts(s: &u8) {
+    while ((*s) != 0) {
+        // `var x = *s` is syntax error XXX
+        gbconsole_putchar(*s);
+        // need ptr += XXX
+        s = s + 1u16;
+    }
+}
+
+fn gbconsole_init() {
+    // messy. want constexpr XXX
+    console_bg = 0x9800 as &[[u8;32];32];
+    console_x = 0;
+    console_y = 0;
+
+    asm("
+        call WaitLY144
+        call LCDOff
+            ; wipe vram
+            ld hl, $8000
+            ld de, $a000-$8000
+            xor a
+            call Memset
+
+            ; copy tile data to vram
+            call CopyTilesToVRAM
+            ; set palette (4 greyscale)
+            ld a, %11100100
+            ld [$ff47], a
+
+            ; set x,y background scroll
+            xor a
+            ld [$ff42], a
+            ld [$ff43], a
+        call LCDOn
+    ")
+}
+
+asm("
+WaitLY144:
+    ; fn ()
+        ; why have both this and WaitNextVBlank? This one works without interrupts enabled
+        ; which screen line is being drawn?
+        ld a, [$ff44]
+        cp a, 144  ; in vblank?
+        jr nz, WaitLY144
+        ret
+
+LCDOff:
+        xor a
+        ld [$ff40], a
+        ret
+
+LCDOn:
+        ld a, %10000001
+        ld [$ff40], a
+        ret
+
+CopyTilesToVRAM:
+    ; fn ()
+        ld hl, $9000
+        ld de, tiles
+        ld bc, tiles_end - tiles
+        jp Memcpy
+
+Memcpy:
+    ; fn (hl: dest, de: src, bc: length)
+        ld a, [de]
+        ld [hl+], a
+        inc de
+        dec bc
+        ld a, b ; check if count is zero (dec does not set flags)
+        or c
+        jr nz, Memcpy
+        ret
+
+Memset:
+    ; fn (hl: dest, de: length, a: value)
+        ld b, a
+    .loop
+        ld [hl+], a
+        dec de
+        ld a, d
+        or a, e
+        ld a, b
+        jp nz, .loop
+        ret
+
+tiles:
+        ds 36*16
+        ; $
+        dw `00030000
+        dw `00333300
+        dw `03030030
+        dw `00330000
+        dw `00033300
+        dw `03030030
+        dw `00333300
+        dw `00030000
+        ; $20 ascii space
+        ds 11*16
+        ; ascii numerals
+        dw `00333300
+        dw `03000330
+        dw `03003030
+        dw `03030030
+        dw `03300030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `00000300
+        dw `00003000
+        dw `00030000
+        dw `00300000
+        dw `03333330
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `00000030
+        dw `00033300
+        dw `00000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+        
+        dw `00000300
+        dw `00003300
+        dw `00030300
+        dw `00300300
+        dw `03000300
+        dw `03333330
+        dw `00000300
+        dw `00000000
+        
+        dw `03333330
+        dw `03000000
+        dw `03000000
+        dw `03333330
+        dw `00000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000000
+        dw `03333300
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `03333330
+        dw `00000030
+        dw `00000300
+        dw `00003000
+        dw `00030000
+        dw `00030000
+        dw `00030000
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `00333330
+        dw `00000030
+        dw `00000030
+        dw `00333300
+        dw `00000000
+
+        ds 7*16
+
+        ; latin upper-case alphabet
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `03333330
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00000000
+
+        dw `03333300
+        dw `03000030
+        dw `03000030
+        dw `03333300
+        dw `03000030
+        dw `03000030
+        dw `03333300
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `03333000
+        dw `03000300
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000300
+        dw `03333000
+        dw `00000000
+
+        dw `03333330
+        dw `03000000
+        dw `03000000
+        dw `03333300
+        dw `03000000
+        dw `03000000
+        dw `03333330
+        dw `00000000
+
+        dw `03333330
+        dw `03000000
+        dw `03000000
+        dw `03333330
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000000
+        dw `03000000
+        dw `03000330
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03333330
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00000000
+
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00000000
+
+        dw `00000300
+        dw `00000300
+        dw `00000300
+        dw `00000300
+        dw `00000300
+        dw `00000300
+        dw `03333000
+        dw `00000000
+
+        dw `03000030
+        dw `03000300
+        dw `03003000
+        dw `03330000
+        dw `03003000
+        dw `03000300
+        dw `03000030
+        dw `00000000
+
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `03333330
+        dw `00000000
+
+        dw `03300033
+        dw `03030303
+        dw `03030303
+        dw `03003003
+        dw `03000003
+        dw `03000003
+        dw `03000003
+        dw `00000000
+
+        dw `03300030
+        dw `03030030
+        dw `03030030
+        dw `03003030
+        dw `03003030
+        dw `03000330
+        dw `03000030
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `03333300
+        dw `03000030
+        dw `03000030
+        dw `03333300
+        dw `03000000
+        dw `03000000
+        dw `03000000
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `00000030
+
+        dw `03333300
+        dw `03000030
+        dw `03000030
+        dw `03333300
+        dw `03000300
+        dw `03000030
+        dw `03000030
+        dw `00000000
+
+        dw `00333300
+        dw `03000030
+        dw `03000000
+        dw `00333300
+        dw `00000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `00333330
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00000000
+
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00333300
+        dw `00000000
+
+        dw `03000030
+        dw `03000030
+        dw `03000030
+        dw `00300300
+        dw `00300300
+        dw `00300300
+        dw `00033000
+        dw `00000000
+
+        dw `03000003
+        dw `03000003
+        dw `03000003
+        dw `03003003
+        dw `03003003
+        dw `03003003
+        dw `00330330
+        dw `00000000
+
+        dw `03000030
+        dw `03000030
+        dw `00300300
+        dw `00033000
+        dw `00300300
+        dw `03000030
+        dw `03000030
+        dw `00000000
+
+        dw `03000003
+        dw `03000003
+        dw `00300030
+        dw `00030300
+        dw `00003000
+        dw `00003000
+        dw `00003000
+        dw `00000000
+
+        dw `03333330
+        dw `00000030
+        dw `00000300
+        dw `00033000
+        dw `00300000
+        dw `03000000
+        dw `03333330
+        dw `00000000
+tiles_end:
+");

@@ -9,8 +9,7 @@ var map2: [[u8; 16]; 16];
 fn get_map_wrapped(x: u8, y: u8) -> u8 { map[x&0xf][y&0xf] }
 
 fn gen_tile(x: u8, y: u8) {
-    var friends: u8;
-    friends = 0;
+    var friends = 0;
 
     if get_map_wrapped(x-1, y-1) == 1 { friends = friends + 1 };
     if get_map_wrapped(x, y-1) == 1 { friends = friends + 1 };
@@ -30,9 +29,7 @@ fn gen_tile(x: u8, y: u8) {
 
 fn life_generation() {
     var x: u8;
-    var y: u8;
-
-    y=0;
+    var y = 0;
 
     while (y != 16) {
         x = 0;

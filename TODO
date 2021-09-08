@@ -9,6 +9,7 @@
 * int + &T
 * &T - &T
 * enforce constness
+* escape chars in strings lead to wrong type length calculation
 
 missing operators:
   /

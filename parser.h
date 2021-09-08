@@ -73,6 +73,7 @@ typedef struct AstNode {
                 struct {
                     Str var_name;
                     TypeId var_type;
+                    NodeIdx value; // this is kept, but actually a BUILTIN_ASSIGN is inserted into the body
                     NodeIdx scoped_expr;
                 } local_scope;
 

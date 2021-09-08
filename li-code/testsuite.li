@@ -1,4 +1,5 @@
 include "li-code/softmath.li"; // needed for integer multiply
+include "li-code/gb_console.li";
 
 fn test_u8_arith(a: u8, b: u8) -> u8 {
   2+b+a-3
@@ -53,7 +54,12 @@ fn on_vblank() {
     ");
 }
 
+const msg_hi = "LI TEST SUITE\n\n";
+
 fn main() {
+    gbconsole_init();
+    gbconsole_puts(&msg_hi[0]);
+
     // enable vblank interrupt
     elapsed_vblanks = 0u16;
     asm("
@@ -61,7 +67,6 @@ fn main() {
         ld [$ffff], a  ; enable vblank interrupt
         ei
     ");
-
     passes = fails = total = 0;
 
     // argument passing and arithmetic
@@ -155,8 +160,7 @@ fn main() {
 
     // test +=
     (
-        var x: u8;
-        x = 0;
+        var x = 0;
         x += 1;
         if x != 1 { fail_() } else { pass() };
         x += 5;
@@ -232,8 +236,7 @@ fn test_ptr() {
     if x != 41 { fail_() } else { pass() };
     if y != 51 { fail_() } else { pass() };
 
-    var z: u16;
-    z = 50u16;
+    var z: u16 = 50u16;
     test_ptr_arg(&z);
     if z != 100u16 { fail_() } else { pass() };
 
@@ -244,9 +247,24 @@ fn test_ptr() {
     if a[2] != 5 { fail_() } else { pass() };
 }
 
+const msg_good = "ALL PASSED";
+const msg_tests = "TOTAL TESTS ";
+const msg_fails = "FAILED TESTS ";
+
 /* Show passed tests in reg 'b', failed tests in 'c', total in 'd',
  * elapsed time in 60ths of a second in `hl` */
 fn output_results() {
+    gbconsole_puts(&msg_tests[0]);
+    gbconsole_puthex(total as u16);
+    gbconsole_putchar(10);
+    gbconsole_putchar(10);
+    if (fails == 0) {
+        gbconsole_puts(&msg_good[0]);
+    } else {
+        gbconsole_puts(&msg_fails[0]);
+        gbconsole_puthex(fails as u16);
+    };
+    /*
     asm("
          ld hl, passes
          ld b, [hl]
@@ -266,6 +284,7 @@ fn output_results() {
          ld e, a
 
          db $dd");
+         */
 }
 
 fn local_scope_argpass(a: u8) -> u8 {
@@ -273,9 +292,11 @@ fn local_scope_argpass(a: u8) -> u8 {
 }
 
 fn local_scope_test(a: u8) -> u8 {
-    var l1: u8;
+    var l1 = 10;
     var l2: u8;
     var l3: [u16; 2];
+
+    if l1 != 10 { fail_() } else { pass() };
 
     // is stack screwed up?
     if a != 66 { fail_() } else { pass() };
@@ -294,9 +315,8 @@ fn local_scope_test(a: u8) -> u8 {
 }
 
 fn test_while() {
-    var i: u8;
+    var i = 0;
     var arr: [u8; 5];
-    i=0;
 
     while i != 5 {
         arr[i] = -i;

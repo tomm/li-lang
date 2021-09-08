@@ -764,6 +764,8 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
 
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
 
+    _i("; builtin %s", builtin_name(op));
+
     enum TypeType ttarg1 = op == BUILTIN_UNARY_ADDRESSOF ? -1 : get_type(arg1->expr.eval_type)->type;
     enum TypeType ttarg2 = n_args > 1 ?  get_type(get_node(arg1->next_sibling)->expr.eval_type)->type : TT_PRIM_VOID;
 
@@ -1036,6 +1038,10 @@ static void record_def_var(NodeIdx def_var) {
     AstNode *var_node = get_node(def_var);
     assert(var_node->type == AST_DEF_VAR);
     TypeId t = var_node->var_def.type;
+
+    if (var_node->var_def.value != 0) {
+        fatal_error(var_node->start_token, "LR35902 backend does not support initialization of RAM globals");
+    }
     
     vec_push(&_ram_vars, &(RamVariable) {
         .size_bytes = get_type(t)->size,
@@ -1173,7 +1179,7 @@ static void _emit_const(NodeIdx node) {
         case LIT_VOID:
             break;
         case LIT_STR:
-            _i("db \"%.*s\"",
+            _i("db \"%.*s\", 0",
                     n->expr.literal.literal_str.len,
                     n->expr.literal.literal_str.s);
             break;
