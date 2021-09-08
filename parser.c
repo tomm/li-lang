@@ -19,6 +19,7 @@ const char* builtin_name(enum BuiltinOp op) {
         case BUILTIN_MUL: return "multiply";
         case BUILTIN_ASSIGN: return "assignment";
         case BUILTIN_PLUSASSIGN: return "+=";
+        case BUILTIN_MINUSASSIGN: return "-=";
         case BUILTIN_EQ: return "equality";
         case BUILTIN_NEQ: return "inequality";
         case BUILTIN_LT: return "less than";
@@ -642,7 +643,8 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
 
     // right associative
     if (tok_peek(toks, 0)->type == T_ASSIGN ||
-        tok_peek(toks, 0)->type == T_PLUSASSIGN)
+        tok_peek(toks, 0)->type == T_PLUSASSIGN ||
+        tok_peek(toks, 0)->type == T_MINUSASSIGN)
     {
         const Token *t = tok_next(toks);
 
@@ -661,6 +663,8 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
                         ? BUILTIN_ASSIGN
                         : t->type == T_PLUSASSIGN
                         ? BUILTIN_PLUSASSIGN
+                        : t->type == T_MINUSASSIGN
+                        ? BUILTIN_MINUSASSIGN
                         : (assert(false), 0),
                     .first_arg = args.first_child
                 }
@@ -731,7 +735,7 @@ static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType termi
         NodeIdx value = 0;
         if (tok_peek(toks, 0)->type == T_ASSIGN) {
             chomp(toks, T_ASSIGN);
-            value = parse_primary_expression(toks);
+            value = parse_expression(toks);
         }
         chomp(toks, T_SEMICOLON);
         NodeIdx scoped_expr = parse_list_expression(toks, terminator);

@@ -42,6 +42,10 @@ syntax region  liComment       start="/\*"  end="\*/" contains=liTodo,liDocLink,
 syntax match   liLineComment   "//.*" contains=liTodo,@Spell
 
 " Strings
+syntax match	liCharacter	"L\='[^\\]'"
+syntax match	liCharacter	"L'[^']*'" contains=liSpecialChar
+"syntax match	cSpecial	display contained "\\\(x\x\+\|\o\{1,3}\|.\|$\)"
+syntax match	liSpecialChar	display contained "\\\(x\x\+\|\o\{1,3}\|.\|$\)"
 syntax region  liMultilineString     start=+\z(["`]\)+ skip=+\\\\\|\\\z1+ end=+\z1+ contains=liGbAsm,liGbReg,liAsmLabel,liAsmComment
 "syntax region  liString        start=+\z(["']\)+ end=+\z1+ contains=@Spell,liInterpolation,liSpecialChar
 "syntax region  liRawString     start=+r\z(["']\)+ end=+\z1+ contains=@Spell
@@ -49,7 +53,7 @@ syntax region  liMultilineString     start=+\z(["`]\)+ skip=+\\\\\|\\\z1+ end=+\
 "syntax region  liRawMultilineString     start=+r\z("\{3\}\|'\{3\}\)+ end=+\z1+ contains=@Spell
 "syntax match   liInterpolation contained "\$\(\w\+\|{[^}]\+}\)"
 "syntax match   liSpecialChar   contained "\\\(u\x\{4\}\|u{\x\+}\|x\x\x\|x{\x\+}\|.\)"
-syntax keyword liGbAsm contained ld xor and or add sub sbc rr rl db ds call di ei halt nop jp jr ret reti cp inc dec push pop
+syntax keyword liGbAsm contained ld xor and or add sub sbc rr rl db ds call di ei halt nop jp jr ret reti cp inc dec push pop swap
 syntax keyword liGbReg contained a b c d e h l f af bc de hl sp
 syntax match liAsmLabel contained /\I\i*:/
 syn match liAsmComment contained /;.*/
@@ -73,6 +77,7 @@ highlight default link liBoolean         Boolean
 highlight default link liString          String
 highlight default link liRawString       String
 highlight default link liMultilineString String
+highlight default link liCharacter       Number
 highlight default link liRawMultilineString String
 highlight default link liDecNumber       Number
 highlight default link liHexNumber       Number

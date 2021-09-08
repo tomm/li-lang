@@ -2,13 +2,12 @@ var console_bg: &[[u8; 32]; 32];
 var console_x: u8;
 var console_y: u8;
 
-fn gbconsole_goto(x: u8, y: u8) {
+fn console_goto(x: u8, y: u8) {
     console_x = x;
     console_y = y;
 }
 
-fn gbconsole_puthex(v: u16) {
-    gbconsole_putchar(36); // XXX '$'
+fn puthex(v: u16) {
     asm("
         ; bc = v
         ld hl, sp+2
@@ -41,22 +40,22 @@ fn gbconsole_puthex(v: u16) {
     .putchar_hex
         cp a, 10
         jr c, .is_lte_9
-        add a, 55 ; ord('A')
+        add a, 55 ; ord('A') - 10
         jr .go
     .is_lte_9
         add a, 48 ; ord('0')
     .go
         push bc
         push af
-        call gbconsole_putchar
+        call putchar
         add sp, 2
         pop bc
         ret
     ")
 }
 
-fn gbconsole_putchar(c: u8) {
-    asm("call WaitLY144");
+fn putchar(c: u8) {
+    asm("call WaitVblank");
     if (c == 10) {
         console_x = 0;
         console_y += 1;
@@ -70,23 +69,21 @@ fn gbconsole_putchar(c: u8) {
     }
 }
 
-fn gbconsole_puts(s: &u8) {
+fn puts(s: &u8) {
     while ((*s) != 0) {
-        // `var x = *s` is syntax error XXX
-        gbconsole_putchar(*s);
-        // need ptr += XXX
-        s = s + 1u16;
+        putchar(*s);
+        s += 1u16;
     }
 }
 
-fn gbconsole_init() {
+fn console_init() {
     // messy. want constexpr XXX
     console_bg = 0x9800 as &[[u8;32];32];
     console_x = 0;
     console_y = 0;
 
     asm("
-        call WaitLY144
+        call WaitVblank
         call LCDOff
             ; wipe vram
             ld hl, $8000
@@ -109,13 +106,12 @@ fn gbconsole_init() {
 }
 
 asm("
-WaitLY144:
-    ; fn ()
-        ; why have both this and WaitNextVBlank? This one works without interrupts enabled
-        ; which screen line is being drawn?
+WaitVblank:
         ld a, [$ff44]
-        cp a, 144  ; in vblank?
-        jr nz, WaitLY144
+        cp a, 144
+        jr c, WaitVblank
+        cp a, 151
+        jr nc, WaitVblank
         ret
 
 LCDOff:

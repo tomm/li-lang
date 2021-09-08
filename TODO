@@ -4,8 +4,7 @@
 * pointer arithmetic
 * passing arrays by value
 * structs
-* logical and/or on U16?
-* &T - int
+* bool type
 * int + &T
 * &T - &T
 * enforce constness
@@ -23,8 +22,6 @@ missing operators:
   <<
   >>
 
-  +=
-  -=
   *=
   /=
   %=

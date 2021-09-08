@@ -26,6 +26,7 @@ typedef struct Token {
         T_COMMA,
         T_ASSIGN,
         T_PLUSASSIGN,
+        T_MINUSASSIGN,
         T_EQ,
         T_NEQ,
         T_GT,

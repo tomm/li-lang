@@ -113,6 +113,7 @@ typedef struct AstNode {
                         BUILTIN_MUL,
                         BUILTIN_ASSIGN,
                         BUILTIN_PLUSASSIGN,
+                        BUILTIN_MINUSASSIGN,
                         BUILTIN_EQ,
                         BUILTIN_NEQ,
                         BUILTIN_LT,

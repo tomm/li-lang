@@ -44,6 +44,9 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
     { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, -1 },
+    { BUILTIN_SUB, TT_PTR, TT_PRIM_U16, -1 },
+    { BUILTIN_PLUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
+    { BUILTIN_MINUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
 
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
@@ -57,6 +60,7 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
@@ -72,6 +76,7 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U16, TT_PRIM_VOID, U8 },
@@ -111,12 +116,19 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
                     case BUILTIN_UNARY_DEREF:
                         return get_type(t1)->ptr.ref;
                     case BUILTIN_ADD:
+                    case BUILTIN_SUB:
                         if (tt1 == TT_PTR) return t1;
                         else assert(false);
                     case BUILTIN_ASSIGN:
                         if (!is_type_eq(t1, t2)) {
                             goto error;
                         }
+                        return t1;
+                    case BUILTIN_MINUSASSIGN:
+                        // ptr -= u16
+                        return t1;
+                    case BUILTIN_PLUSASSIGN:
+                        // ptr += u16
                         return t1;
                     case BUILTIN_ARRAY_INDEXING:
                         return get_type(t1)->array.contained;

@@ -25,6 +25,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_CONST: return "const";
         case T_ASSIGN: return "=";
         case T_PLUSASSIGN: return "+=";
+        case T_MINUSASSIGN: return "-=";
         case T_EXCLAMATION: return "!";
         case T_EQ: return "==";
         case T_NEQ: return "!=";
@@ -73,6 +74,7 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == ':') { EMIT(((Token) { T_COLON, line, col, filename })); NEXT(); }
         else if (*pos == '~') { EMIT(((Token) { T_TILDE, line, col, filename })); NEXT(); }
         else if ((*pos == '-') && LOOK_AHEAD() == '>') { EMIT(((Token) { T_RARROW, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '-' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_MINUSASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
         else if (*pos == '+' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_PLUSASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
@@ -86,6 +88,23 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col, filename })); NEXT(); }
         else if (*pos == '<') { EMIT(((Token) { T_LT, line, col, filename })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col, filename })); NEXT(); }
+        else if (*pos == '\'') {
+            Token t;
+            t.line = line;
+            t.col = col;
+            t.filename = filename;
+            t.type = T_LITERAL_U8;
+
+            NEXT();
+            t.int_literal = *pos;
+            NEXT();
+            if (*pos != '\'') {
+                error(&t, "Malformed character literal");
+            }
+            // XXX handle escape chars
+            NEXT();
+            EMIT(t);
+        }
         else if (!last_tok_was_literal && (*pos == '"' || *pos == '`')) {
             const char delim = *pos;
             Token t = { T_LITERAL_STR, line, col, filename };

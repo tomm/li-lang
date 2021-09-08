@@ -308,6 +308,11 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
             _i("add a, b");
             _i("ld [hl], a");
             break;
+        case BUILTIN_MINUSASSIGN:
+            _i("ld a, [hl]");
+            _i("sub a, b");
+            _i("ld [hl], a");
+            break;
         default:
             assert(false);
     }
@@ -395,7 +400,7 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
 
-Value emit_ptr_add_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
     //AstNode *arg2 = get_node(arg1->next_sibling);
@@ -416,7 +421,19 @@ Value emit_ptr_add_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
     }
     v1 = emit_pop(v1, frame, false);
     v1 = emit_value_to_register(v1, false);   // v1 in `hl`
-    _i("add hl, de");
+    if (op == BUILTIN_ADD) {
+        _i("add hl, de");
+    } else if (op == BUILTIN_SUB) {
+        _i("ld a, l");
+        _i("sub a, e");
+        _i("ld l, a");
+
+        _i("ld a, h");
+        _i("sbc a, d");
+        _i("ld h, a");
+    } else {
+        assert(false);
+    }
     return (Value) { .storage = ST_REG_VAL, .typeId = v1.typeId };
 }
 
@@ -611,11 +628,82 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     if (v1.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
     }
-    _i("ld a, e");
-    _i("ld [hl+], a");
-    _i("ld a, d");
-    _i("ld [hl-], a");
+
+    switch (op) {
+        case BUILTIN_ASSIGN:
+            _i("ld a, e");
+            _i("ld [hl+], a");
+            _i("ld a, d");
+            _i("ld [hl-], a");
+            break;
+        case BUILTIN_PLUSASSIGN:
+            _i("ld a, [hl]");
+            _i("add a, e");
+            _i("ld [hl+], a");
+
+            _i("ld a, [hl]");
+            _i("adc a, d");
+            _i("ld [hl-], a");
+            break;
+        case BUILTIN_MINUSASSIGN:
+            _i("ld a, [hl]");
+            _i("sub a, e");
+            _i("ld [hl+], a");
+
+            _i("ld a, [hl]");
+            _i("sbc a, d");
+            _i("ld [hl-], a");
+            break;
+        default:
+            assert(false);
+    }
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
+}
+
+Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+
+    if (v1.storage != ST_REG_EA) {
+        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
+    }
+
+    assert(get_type(v1.typeId)->type == TT_PTR);
+    const Type *ref = get_type(get_type(v1.typeId)->ptr.ref);
+
+    v2 = emit_value_to_register(v2, true);   // v2 in `de`
+    if (ref->size != 1) {
+        _i("ld hl, %d", ref->size);
+        _i("call __mulu16");
+        _i("ld d, h");
+        _i("ld e, l");
+    }
+    v1 = emit_pop(v1, frame, false);
+    if (op == BUILTIN_PLUSASSIGN) {
+        _i("ld a, [hl]");
+        _i("add a, e");
+        _i("ld [hl+], a");
+
+        _i("ld a, [hl]");
+        _i("adc a, d");
+        _i("ld [hl-], a");
+    } else if (op == BUILTIN_MINUSASSIGN) {
+        _i("ld a, [hl]");
+        _i("sub a, e");
+        _i("ld [hl+], a");
+
+        _i("ld a, [hl]");
+        _i("sbc a, d");
+        _i("ld [hl-], a");
+    } else {
+        assert(false);
+    }
+    return (Value) { .storage = ST_REG_EA, .typeId = v1.typeId };
 }
 
 Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -714,7 +802,10 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_UNARY_ADDRESSOF, -1 /* accept any */, TT_PRIM_VOID, emit_addressof },
     { BUILTIN_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, emit_ptr_deref },
     { BUILTIN_ASSIGN, TT_PTR, TT_PTR, emit_assign_u16 },
-    { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, emit_ptr_add_u16 },
+    { BUILTIN_PLUSASSIGN, TT_PTR, TT_PRIM_U16, emit_ptr_opassign_u16 },
+    { BUILTIN_MINUSASSIGN, TT_PTR, TT_PRIM_U16, emit_ptr_opassign_u16 },
+    { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
+    { BUILTIN_SUB, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
 
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
@@ -728,6 +819,7 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
@@ -744,6 +836,8 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, emit_array_indexing_u16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
