@@ -26,6 +26,8 @@ const char* builtin_name(enum BuiltinOp op) {
         case BUILTIN_GT: return "greater than";
         case BUILTIN_LTE: return "less than or equal to";
         case BUILTIN_GTE: return "greater than or equal to";
+        case BUILTIN_SHIFT_LEFT: return "left shift";
+        case BUILTIN_SHIFT_RIGHT: return "right shift";
         case BUILTIN_ARRAY_INDEXING: return "array indexing";
         case BUILTIN_UNARY_NEG: return "unary negation";
         case BUILTIN_UNARY_ADDRESSOF: return "address of";
@@ -457,6 +459,8 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
         if (!(
             tok_peek(toks, 0)->type == T_PLUS ||
             tok_peek(toks, 0)->type == T_MINUS ||
+            tok_peek(toks, 0)->type == T_SHIFT_LEFT ||
+            tok_peek(toks, 0)->type == T_SHIFT_RIGHT ||
             (
                 tok_peek(toks, 0)->type == T_AMPERSAND &&
                 tok_peek_whitespace_sensitive(toks, 1)->type != T_AMPERSAND
@@ -486,6 +490,8 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
                     .op = (
                         t->type == T_PLUS ? BUILTIN_ADD
                         : t->type == T_MINUS ? BUILTIN_SUB
+                        : t->type == T_SHIFT_LEFT ? BUILTIN_SHIFT_LEFT
+                        : t->type == T_SHIFT_RIGHT ? BUILTIN_SHIFT_RIGHT
                         : t->type == T_AMPERSAND ? BUILTIN_BITAND
                         : t->type == T_PIPE ? BUILTIN_BITOR
                         : t->type == T_ACUTE ? BUILTIN_BITXOR
@@ -546,6 +552,8 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
 
     while (tok_peek(toks, 0)->type == T_EQ ||
            tok_peek(toks, 0)->type == T_NEQ ||
+           tok_peek(toks, 0)->type == T_GTE ||
+           tok_peek(toks, 0)->type == T_LTE ||
            tok_peek(toks, 0)->type == T_GT ||
            tok_peek(toks, 0)->type == T_LT
     ) {
@@ -570,6 +578,10 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
                           ? BUILTIN_GT
                           : t->type == T_LT
                           ? BUILTIN_LT
+                          : t->type == T_GTE
+                          ? BUILTIN_GTE
+                          : t->type == T_LTE
+                          ? BUILTIN_LTE
                           : (assert(false), 0),
                     .first_arg = args.first_child
                 }

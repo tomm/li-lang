@@ -12,11 +12,32 @@ fn test_cast_u16(a: u8) -> u16 { a as u16 }
 
 fn test_cast_u8(a: u16) -> u8 { a as u8 }
 
-fn test_u16_global() -> void {
+fn test_var_globals() -> void {
     test_u16 = 10u16;
     test_u16 = test_u16 + test_u16;
     test_u16 = test_u16 + 1u16;
-    if test_u16 == 21u16 { pass() } else { fail_() }
+    expect(test_u16 == 21u16);
+
+    // arrays
+    test_arr_u8[0] = 3;
+    test_arr_u8[1] = test_arr_u8[0] + test_arr_u8[0];
+    test_arr_u8[2] = test_arr_u8[1] + test_arr_u8[0];
+    test_arr_u8[3] = test_arr_u8[2] + test_arr_u8[1];
+    test_arr_2d_u16[0][0] = 0x1234;
+    test_arr_2d_u16[0][1] = test_arr_2d_u16[0][0] - 1u16;
+    test_arr_2d_u16[1][0] = test_arr_2d_u16[0][1] * 2u16;
+    test_arr_2d_u16[1][1] = test_arr_2d_u16[1][0] + test_arr_2d_u16[0][0];
+    expect(test_arr_u8[0] == 3);
+    expect(test_arr_u8[1] == 6);
+    expect(test_arr_u8[2] == 9);
+    expect(test_arr_u8[3] == 15);
+    expect(test_arr_2d_u16[0][0] == 0x1234);
+    expect(test_arr_2d_u16[0][1] == 0x1233);
+    expect(test_arr_2d_u16[1][0] == 0x2466);
+    expect(test_arr_2d_u16[1][1] == 0x369a);
+    // with u16 indexes
+    test_arr_2d_u16[1u16][1u16] = 513;
+    expect(test_arr_2d_u16[1u16][1u16] == 513);
 }
 
 var passes: u8;
@@ -29,6 +50,7 @@ var test_arr_2d_u16: [[u16; 2]; 2];
 
 fn pass() { passes = passes + 1; total = total + 1; }
 fn fail_() { fails = fails + 1; total = total + 1; } // seems 'fail' is an rgbasm special thing...
+fn expect(result: u8) { if result { pass() } else { fail_() } }
 
 var elapsed_vblanks: u16;
 
@@ -54,126 +76,184 @@ fn on_vblank() {
     ");
 }
 
-const msg_hi = "LI TEST SUITE\n\n";
-
-fn main() {
-    console_init();
-    puts(&msg_hi[0]);
-
-    // enable vblank interrupt
-    elapsed_vblanks = 0u16;
+fn enable_vblank() {
     asm("
         ld a, 1
         ld [$ffff], a  ; enable vblank interrupt
         ei
     ");
+}
+
+const msg_hi = "LI TEST SUITE\n\n";
+
+fn main() {
     passes = fails = total = 0;
 
-    test_u16_assigns();
-    test_u8_assigns();
+    console_init();
+    puts(&msg_hi[0]);
+
+    // enable vblank interrupt (for timing)
+    elapsed_vblanks = 0u16;
+    enable_vblank();
 
     // argument passing and arithmetic
-    if test_u8_arith(4,0xf) == 0x12 { pass() } else { fail_() };
-
-    if test_u16_arith(
-        0x6543, 0x4567, 0x1234, 0x20
-    ) == 0xf3ef { pass() } else { fail_() };
-
-    if test_cast_u16(0xde) == 0xdeu16 { pass() } else { fail_() };
-    if test_cast_u8(0xcafe) == 0xfe { pass() } else { fail_() };
-
-    // multiply
-    if 5*5 == 25 { pass() } else { fail_() };
-    if 255*255 == 1 { pass() } else { fail_() };
-    if 255u16*255u16 - 0xfe01 { fail_() } else { pass() };
-    if 123u16*100u16 - 12300 { fail_() } else { pass() };
-
-    // comparators
-    if 4 != 4 { fail_() } else { pass() };
-    if 5 != 6 { pass() } else { fail_() };
-    if 0x1234 != 0x1234 { fail_() } else { pass() };
-    if 0x1234 != 0x2345 { pass() } else { fail_() };
-
-    test_u16_global();
-
-    // arrays
-    test_arr_u8[0] = 3;
-    test_arr_u8[1] = test_arr_u8[0] + test_arr_u8[0];
-    test_arr_u8[2] = test_arr_u8[1] + test_arr_u8[0];
-    test_arr_u8[3] = test_arr_u8[2] + test_arr_u8[1];
-    test_arr_2d_u16[0][0] = 0x1234;
-    test_arr_2d_u16[0][1] = test_arr_2d_u16[0][0] - 1u16;
-    test_arr_2d_u16[1][0] = test_arr_2d_u16[0][1] * 2u16;
-    test_arr_2d_u16[1][1] = test_arr_2d_u16[1][0] + test_arr_2d_u16[0][0];
-    if test_arr_u8[0] != 3 { fail_() } else { pass() };
-    if test_arr_u8[1] != 6 { fail_() } else { pass() };
-    if test_arr_u8[2] != 9 { fail_() } else { pass() };
-    if test_arr_u8[3] != 15 { fail_() } else { pass() };
-    if test_arr_2d_u16[0][0] != 0x1234 { fail_() } else { pass() };
-    if test_arr_2d_u16[0][1] != 0x1233 { fail_() } else { pass() };
-    if test_arr_2d_u16[1][0] != 0x2466 { fail_() } else { pass() };
-    if test_arr_2d_u16[1][1] != 0x369a { fail_() } else { pass() };
-    // with u16 indexes
-    test_arr_2d_u16[1u16][1u16] = 513;
-    if test_arr_2d_u16[1u16][1u16] != 513 { fail_() } else { pass() };
-
-    // if expression
-    if (if 1 {0xcafe} else {0xdead}) == 0xcafe { pass() } else { fail_() };
-    if (if 0 {0xcafe} else {0xdead}) == 0xdead { pass() } else { fail_() };
-
+    expect(test_u8_arith(4,0xf) == 0x12);
+    // larger u16 arith expression requiring temporaries
+    expect(test_u16_arith(0x6543, 0x4567, 0x1234, 0x20) == 0xf3ef);
+    // casts
+    expect(test_cast_u16(0xde) == 0xdeu16);
+    expect(test_cast_u8(0xcafe) == 0xfe);
     // local scopes
-    if local_scope_test(66) != 6 { fail_() } else { pass() };
-
-    // while loops
-    test_while();
-
+    expect(test_local_scope(66) == 6);
     // forward/extern declarations
-    if test_fwd_decl(2) != 3 { fail_() } else { pass() };
-
-    test_ptr();
-    test_ptr_arith();
-
+    expect(test_fwd_decl(2) == 3);
+    // if expression
+    expect((if 1 {0xcafe} else {0xdead}) == 0xcafe);
+    expect((if 0 {0xcafe} else {0xdead}) == 0xdead);
+    // == operator
+    expect(eq_u8(4,4));
+    expect(!eq_u8(5,6));
+    expect(!eq_u8(9,6));
+    expect(eq_u16(0x1234, 0x1234));
+    expect(!eq_u16(0x1234, 0x2345));
+    expect(!eq_u16(0x1284, 0x2345));
+    // != operator
+    expect(!neq_u8(4,4));
+    expect(neq_u8(5,6));
+    expect(neq_u8(9,6));
+    expect(!neq_u16(0x1234, 0x1234));
+    expect(neq_u16(0x1234, 0x2345));
+    expect(neq_u16(0x1284, 0x2345));
+    // > operator
+    expect(gt_u8(5,4));
+    expect(!gt_u8(2,6));
+    expect(!gt_u8(6,6));
+    expect(gt_u16(0x1234,0x1233));
+    expect(!gt_u16(0x1234,0x1234));
+    expect(!gt_u16(0x1234,0x1235));
+    expect(gt_u16(0x1333,0x1233));
+    expect(!gt_u16(0x1133,0x1233));
+    // < operator
+    expect(lt_u8(4,5));
+    expect(!lt_u8(6,2));
+    expect(!lt_u8(6,6));
+    expect(lt_u16(0x1233,0x1234));
+    expect(!lt_u16(0x1234,0x1234));
+    expect(!lt_u16(0x1235,0x1234));
+    expect(lt_u16(0x1233,0x1333));
+    expect(!lt_u16(0x1233,0x1133));
+    // >= operator
+    expect(gte_u8(5,4));
+    expect(!gte_u8(2,6));
+    expect(gte_u8(6,6));
+    expect(gte_u16(0x1234,0x1233));
+    expect(gte_u16(0x1234,0x1234));
+    expect(!gte_u16(0x1234,0x1235));
+    expect(gte_u16(0x1333,0x1233));
+    expect(!gte_u16(0x1133,0x1233));
+    // <= operator
+    expect(lte_u8(4,5));
+    expect(!lte_u8(6,2));
+    expect(lte_u8(6,6));
+    expect(lte_u16(0x1233,0x1234));
+    expect(lte_u16(0x1234,0x1234));
+    expect(!lte_u16(0x1235,0x1234));
+    expect(lte_u16(0x1233,0x1333));
+    expect(!lte_u16(0x1233,0x1133));
     // logical ops
-    if 1 && 1 { pass() } else { fail_() };
-    if 0 && 1 { fail_() } else { pass() };
-    if 1 && 0 { fail_() } else { pass() };
-    if 0 && 0 { fail_() } else { pass() };
-    if 1 || 1 { pass() } else { fail_() };
-    if 0 || 1 { pass() } else { fail_() };
-    if 1 || 0 { pass() } else { fail_() };
-    if 0 || 0 { fail_() } else { pass() };
-
-    // bitwise not
-    if (~0xc0) != 0x3f { fail_() } else { pass() };
-    if (~0xfc0fu16) != 0x3f0u16 { fail_() } else { pass() };
-
-    // logical not
-    if !5 { fail_() } else { pass() };
-    if !0 { pass() } else { fail_() };
-    if !500u16 { fail_() } else { pass() };
-    if !0u16 { pass() } else { fail_() };
-
-    // comparisons
-    if 5>4 { pass() } else { fail_() };
-    if 2>6 { fail_() } else { pass() };
-    if 6>6 { fail_() } else { pass() };
-    //if 0x1234>0x1233 { pass() } else { fail_() };
-    //if 0x3456>0x3457 { fail_() } else { pass() };
-    //if 0xcafe>0xcafe { fail_() } else { pass() };
+    expect(log_and(1,1));
+    expect(!log_and(0,1));
+    expect(!log_and(1,0));
+    expect(!log_and(0,0));
+    expect(log_or(1,1));
+    expect(log_or(0,1));
+    expect(log_or(1,0));
+    expect(!log_or(0,0));
+    expect(!log_not(5));
+    expect(log_not(0));
+    // bitwise
+    expect(bitnot_u8(0xc0) == 0x3f);
+    expect(bitnot_u16(0xfc0fu16) == 0x3f0u16);
+    expect(bitand_u8(0x3c,0xf0) == 0x30);
+    expect(bitor_u8(0x3c,0xf0) == 0xfc);
+    expect(bitxor_u8(0x3c,0xf0) == 0xcc);
+    expect(bitand_u16(0x3cba,0xf00f) == 0x300a);
+    expect(bitor_u16(0x3cba,0xf00f) == 0xfcbf);
+    expect(bitxor_u16(0x3cba,0xf00f) == 0xccb5);
+    // add, sub
+    expect(add_u8(0xfe, 0x12) == 0x10);
+    expect(sub_u8(0xfe, 0x12) == 0xec);
+    expect(add_u16(0xfebc, 0x1234) == 0x10f0);
+    expect(sub_u16(0xfebc, 0x1234) == 0xec88);
+    // multiply
+    expect(mul_u8(5,5) == 25);
+    expect(mul_u8(255,255) == 1);
+    expect(mul_u16(255u16,255u16) == 0xfe01);
+    expect(mul_u16(123u16,100u16) == 12300);
+    // shifts
+    expect(shl_u8(6, 0) == 6);
+    expect(shl_u8(6, 3) == 48);
+    expect(shr_u8(191, 0) == 191);
+    expect(shr_u8(191, 3) == 23);
+    expect(shl_u16(6789, 0) == 6789);
+    expect(shl_u16(6789, 3) == 54312);
+    expect(shr_u16(6789, 0) == 6789);
+    expect(shr_u16(6789, 3) == 848);
 
     // test +=
     (
         var x = 0;
         x += 1;
-        if x != 1 { fail_() } else { pass() };
+        expect(x == 1);
         x += 5;
-        if x != 6 { fail_() } else { pass() };
+        expect(x == 6);
     );
 
+    test_u16_assigns();
+    test_u8_assigns();
     test_const_globals();
+    test_var_globals();
+    test_ptr();
+    test_ptr_arith();
+    test_while();
 
     output_results();
 }
+
+// wrap operators to confound constant folding optimizer
+fn log_not(a: u8) -> u8 { !a }
+fn log_and(a: u8, b: u8) -> u8 { a && b }
+fn log_or(a: u8, b: u8) -> u8 { a || b }
+fn bitnot_u8(a: u8) -> u8 { ~a }
+fn bitnot_u16(a: u16) -> u16 { ~a }
+fn bitand_u8(a: u8, b: u8) -> u8 { a & b }
+fn bitand_u16(a: u16, b: u16) -> u16 { a & b }
+fn bitor_u8(a: u8, b: u8) -> u8 { a | b }
+fn bitor_u16(a: u16, b: u16) -> u16 { a | b }
+fn bitxor_u8(a: u8, b: u8) -> u8 { a ^ b }
+fn bitxor_u16(a: u16, b: u16) -> u16 { a ^ b }
+fn eq_u8(a: u8, b: u8) -> u8 { a == b }
+fn eq_u16(a: u16, b: u16) -> u8 { a == b }
+fn neq_u8(a: u8, b: u8) -> u8 { a != b }
+fn neq_u16(a: u16, b: u16) -> u8 { a != b }
+fn gt_u8(a: u8, b: u8) -> u8 { a > b }
+fn gt_u16(a: u16, b: u16) -> u8 { a > b }
+fn gte_u8(a: u8, b: u8) -> u8 { a >= b }
+fn gte_u16(a: u16, b: u16) -> u8 { a >= b }
+fn lt_u8(a: u8, b: u8) -> u8 { a < b }
+fn lt_u16(a: u16, b: u16) -> u8 { a < b }
+fn lte_u8(a: u8, b: u8) -> u8 { a <= b }
+fn lte_u16(a: u16, b: u16) -> u8 { a <= b }
+fn add_u8(a: u8, b: u8) -> u8 { a + b }
+fn add_u16(a: u16, b: u16) -> u16 { a + b }
+fn sub_u8(a: u8, b: u8) -> u8 { a - b }
+fn sub_u16(a: u16, b: u16) -> u16 { a - b }
+fn mul_u8(a: u8, b: u8) -> u8 { a * b }
+fn mul_u16(a: u16, b: u16) -> u16 { a * b }
+fn shl_u8(a: u8, b: u8) -> u8 { a << b }
+fn shr_u8(a: u8, b: u8) -> u8 { a >> b }
+fn shl_u16(a: u16, b: u8) -> u16 { a << b }
+fn shr_u16(a: u16, b: u8) -> u16 { a >> b }
 
 // can tell type, or infer from literal
 const myconst_a: [u8; 12] = "Hello world";
@@ -181,37 +261,37 @@ const myconst_b = 2u16;
 const myconst_c = [[1,2,4,8],[2,3,4,9]];
 
 fn test_const_globals() {
-    if myconst_a[0] != 'H' { fail_() } else { pass() };
-    if myconst_a[1] != 'e' { fail_() } else { pass() };
-    if myconst_b != 2u16 { fail_() } else { pass() };
-    if myconst_c[0][0] != 1 { fail_() } else { pass() };
-    if myconst_c[1][1] != 3 { fail_() } else { pass() };
+    expect(myconst_a[0] == 'H');
+    expect(myconst_a[1] == 'e');
+    expect(myconst_b == 2u16);
+    expect(myconst_c[0][0] == 1);
+    expect(myconst_c[1][1] == 3);
 }
 
 fn test_u16_assigns() {
     var a: u16 = 3u16;
-    if a != 3u16 { fail_() } else { pass() };
+    expect(a == 3u16);
     a = 5u16;
-    if a != 5u16 { fail_() } else { pass() };
+    expect(a == 5u16);
     a += 4u16;
-    if a != 9u16 { fail_() } else { pass() };
+    expect(a == 9u16);
 
     var b = a -= 2u16;
-    if a != b { fail_() } else { pass() };
-    if b != 7u16 { fail_() } else { pass() };
+    expect(a == b);
+    expect(b == 7u16);
 }
 
 fn test_u8_assigns() {
     var a: u8 = 3;
-    if a != 3 { fail_() } else { pass() };
+    expect(a == 3);
     a = 5;
-    if a != 5 { fail_() } else { pass() };
+    expect(a == 5);
     a += 4;
-    if a != 9 { fail_() } else { pass() };
+    expect(a == 9);
 
     var b = a -= 2;
-    if a != b { fail_() } else { pass() };
-    if b != 7 { fail_() } else { pass() };
+    expect(a == b);
+    expect(b == 7);
 }
 
 fn test_fwd_decl(a: u8) -> u8;
@@ -238,12 +318,12 @@ fn test_ptr_arith() {
     *p = 99u16;
 
     p = p - 2u16;
-    if *p != 1u16 { fail_() } else { pass() };
+    expect(*p == 1u16);
 
-    if a[0] != 1u16 { fail_() } else { pass() };
-    if a[1] != 2u16 { fail_() } else { pass() };
-    if a[2] != 99u16 { fail_() } else { pass() };
-    if a[3] != 4u16 { fail_() } else { pass() };
+    expect(a[0] == 1u16);
+    expect(a[1] == 2u16);
+    expect(a[2] == 99u16);
+    expect(a[3] == 4u16);
 }
 
 fn test_ptr_arg(a: &u16) {
@@ -269,18 +349,18 @@ fn test_ptr() {
     **pp = **pp + *p + 1;
     y = *p + 10;
 
-    if x != 41 { fail_() } else { pass() };
-    if y != 51 { fail_() } else { pass() };
+    expect(x == 41);
+    expect(y == 51);
 
     var z: u16 = 50u16;
     test_ptr_arg(&z);
-    if z != 100u16 { fail_() } else { pass() };
+    expect(z == 100u16);
 
     var a: [u8; 3];
     test_ptr_array(&a);
-    if a[0] != 1 { fail_() } else { pass() };
-    if a[1] != 3 { fail_() } else { pass() };
-    if a[2] != 5 { fail_() } else { pass() };
+    expect(a[0] == 1);
+    expect(a[1] == 3);
+    expect(a[2] == 5);
 }
 
 const msg_good = "ALL PASSED";
@@ -306,25 +386,25 @@ fn local_scope_argpass(a: u8) -> u8 {
     a
 }
 
-fn local_scope_test(a: u8) -> u8 {
+fn test_local_scope(a: u8) -> u8 {
     var l1 = 10;
     var l2: u8;
     var l3: [u16; 2];
 
-    if l1 != 10 { fail_() } else { pass() };
+    expect(l1 == 10);
 
     // is stack screwed up?
-    if a != 66 { fail_() } else { pass() };
+    expect(a == 66);
     l1 = 4;
     l2 = 1;
     l3[0] = (l1 + l2) as u16;
     l3[l2] = l3[0] + 1u16;
 
-    if l1 != 4 { fail_() } else { pass() };
-    if l2 != 1 { fail_() } else { pass() };
-    if l3[0] != 5u16 { fail_() } else { pass() };
-    if l3[l2] != 6u16 { fail_() } else { pass() };
-    if local_scope_argpass(l1) != 4 { fail_() } else { pass() };
+    expect(l1 == 4);
+    expect(l2 == 1);
+    expect(l3[0] == 5u16);
+    expect(l3[l2] == 6u16);
+    expect(local_scope_argpass(l1) == 4);
 
     l3[1] as u8
 }
@@ -338,10 +418,10 @@ fn test_while() {
         i = i + 1;
     };
 
-    if i != 5 { fail_() } else { pass() };
-    if arr[0] != 0 { fail_() } else { pass() };
-    if arr[1] != -1 { fail_() } else { pass() };
-    if arr[2] != -2 { fail_() } else { pass() };
-    if arr[3] != -3 { fail_() } else { pass() };
-    if arr[4] != -4 { fail_() } else { pass() };
+    expect(i == 5);
+    expect(arr[0] == 0);
+    expect(arr[1] == -1);
+    expect(arr[2] == -2);
+    expect(arr[3] == -3);
+    expect(arr[4] == -4);
 }

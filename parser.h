@@ -120,6 +120,8 @@ typedef struct AstNode {
                         BUILTIN_GT,
                         BUILTIN_LTE,
                         BUILTIN_GTE,
+                        BUILTIN_SHIFT_LEFT,
+                        BUILTIN_SHIFT_RIGHT,
                         BUILTIN_ARRAY_INDEXING,
                         BUILTIN_UNARY_NEG,
                         BUILTIN_UNARY_ADDRESSOF,

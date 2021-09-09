@@ -13,14 +13,7 @@
 missing operators:
   /
   %
-  ++
-  --
-  >
-  <
-  >=
-  <=
-  <<
-  >>
+  ++, -- (but maybe not)
 
   *=
   /=

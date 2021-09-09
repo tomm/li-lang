@@ -274,11 +274,12 @@ static void emit_truthy_test_to_zflag(const Token *t, Value v)
     if (v.typeId == U8) {
         emit_value_to_register(v, false);  // to 'a' register
         _i("and a, a");
-    } else if (v.typeId == U16) {
+    } /*else if (v.typeId == U16) {
         emit_value_to_register(v, false);  // to 'hl' register
         _i("ld a, l");
         _i("or a, h");
-    } else {
+    }*/
+    else {
         fatal_error(t, "Type '%.*s' cannot be evaluated for truthyness",
                 (int)get_type(v.typeId)->name.len,
                 get_type(v.typeId)->name.s);
@@ -521,6 +522,23 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
 
     // assumes binary op
     switch (op) {
+        case BUILTIN_SHIFT_RIGHT:
+        case BUILTIN_SHIFT_LEFT:
+            {
+                const int start_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                _i("ld c, a");
+                _i("ld a, b");
+                _label(start_label);
+                _i("and a");
+                _i("jr z, .l%d", end_label);
+                _i("dec a");
+                _i("%s c", op == BUILTIN_SHIFT_LEFT ? "sla" : "srl");
+                _i("jr .l%d", start_label);
+                _label(end_label);
+                _i("ld a, c");
+            }
+            break;
         case BUILTIN_ADD:
             _i("add a, b");
             break;
@@ -539,30 +557,40 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
         case BUILTIN_MUL:
             _i("call __mulu8");
             break;
+        case BUILTIN_NEQ:
         case BUILTIN_EQ:
-            {
-                const int l = _local_label_seq++;
-                _i("cp a, b");
-                _i("ld a, 0"); // clear without affecting flags
-                _i("jr nz, .l%d", l);
-                _i("inc a");
-                _label(l);
-            }
-            break;
-        case BUILTIN_GT:
             {
                 const int false_label = _local_label_seq++;
                 _i("cp a, b");
                 _i("ld a, 0");
-                _i("jr c, .l%d", false_label);
-                _i("jr z, .l%d", false_label);
+                _i("jr %s, .l%d", op == BUILTIN_EQ ? "nz" : "z", false_label);
                 _i("inc a");
                 _label(false_label);
             }
             break;
-        case BUILTIN_NEQ:
+        case BUILTIN_GTE:
+        case BUILTIN_LTE:
             {
-                _i("sub a, b");
+                const int true_label = _local_label_seq++;
+                _i("cp a, b");
+                _i("ld a, 1");
+                _i("jr %s, .l%d", op == BUILTIN_GTE ? "nc" : "c", true_label);
+                _i("jr z, .l%d", true_label);
+                _i("xor a");
+                _label(true_label);
+            }
+            break;
+        case BUILTIN_LT:
+        case BUILTIN_GT:
+            {
+                const int false_label = _local_label_seq++;
+                const char *cflag = op == BUILTIN_GT ? "c" : "nc";
+                _i("cp a, b");
+                _i("ld a, 0");
+                _i("jr z, .l%d", false_label);
+                _i("jr %s, .l%d", cflag, false_label);
+                _i("inc a");
+                _label(false_label);
             }
             break;
         default:
@@ -597,6 +625,7 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
             _i("cpl");
             _i("ld l, a");
             return (Value) { .typeId = U16, .storage = ST_REG_VAL };
+            /*
         case BUILTIN_UNARY_LOGICAL_NOT:
             {
                 const int false_label = _local_label_seq++;
@@ -608,6 +637,7 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
                 _label(false_label);
                 return (Value) { .typeId = U8, .storage = ST_REG_VAL };
             }
+            */
         default:
             assert(false);
     }
@@ -720,6 +750,28 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
+        case BUILTIN_SHIFT_RIGHT:
+        case BUILTIN_SHIFT_LEFT:
+            {
+                // v2 is actually in `b`, since it's a U8
+                const int start_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                _i("ld a, b");
+                _label(start_label);
+                _i("and a");
+                _i("jr z, .l%d", end_label);
+                _i("dec a");
+                if (op == BUILTIN_SHIFT_LEFT) {
+                    _i("sla l");
+                    _i("rl h");
+                } else {
+                    _i("srl h");
+                    _i("rr l");
+                }
+                _i("jr .l%d", start_label);
+                _label(end_label);
+            }
+            break;
         case BUILTIN_ADD:
             _i("add hl, de");
             break;
@@ -762,6 +814,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
         case BUILTIN_MUL:
             _i("call __mulu16");
             break;
+        case BUILTIN_NEQ:
         case BUILTIN_EQ:
             {
                 const int l = _local_label_seq++;
@@ -775,20 +828,59 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
 
                 _i("ld a, 0"); // not affecting flags
 
-                _i("jr nz, .l%d", l);
+                _i("jr %s, .l%d", op == BUILTIN_EQ ? "nz" : "z", l);
                 _i("dec a");
                 _label(l);
             }
             return (Value) { .typeId = U8, .storage = ST_REG_VAL };
-        case BUILTIN_NEQ:
+        case BUILTIN_GT:
+        case BUILTIN_LT:
             {
-                _i("ld a, l");
-                _i("sub a, e");
-                _i("ld l, a");
-
+                const int test_lo_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                const char *cflag = op == BUILTIN_GT ? "c" : "nc";
+                // test high byte
                 _i("ld a, h");
-                _i("sbc a, d");
-                _i("or a, l");
+                _i("cp a, d");
+                _i("ld a, 0");
+                _i("jr z, .l%d", test_lo_label);
+                _i("jr %s, .l%d", cflag, end_label);
+                _i("inc a");
+                _i("jr .l%d", end_label);
+                _label(test_lo_label);
+                // test low byte
+                _i("ld a, l");
+                _i("cp a, e");
+                _i("ld a, 0");
+                _i("jr z, .l%d", end_label);
+                _i("jr %s, .l%d", cflag, end_label);
+                _i("inc a");
+                _label(end_label);
+            }
+            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+        case BUILTIN_GTE:
+        case BUILTIN_LTE:
+            {
+                const int test_lo_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                const char *cflag = op == BUILTIN_GTE ? "nc" : "c";
+                // test high byte
+                _i("ld a, h");
+                _i("cp a, d");
+                _i("ld a, 1");
+                _i("jr z, .l%d", test_lo_label);
+                _i("jr %s, .l%d", cflag, end_label);
+                _i("xor a");
+                _i("jr .l%d", end_label);
+                _label(test_lo_label);
+                // test low byte
+                _i("ld a, l");
+                _i("cp a, e");
+                _i("ld a, 1");
+                _i("jr z, .l%d", end_label);
+                _i("jr %s, .l%d", cflag, end_label);
+                _i("xor a");
+                _label(end_label);
             }
             return (Value) { .typeId = U8, .storage = ST_REG_VAL };
         default:
@@ -807,12 +899,16 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
     { BUILTIN_SUB, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
 
+    { BUILTIN_SHIFT_LEFT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_GT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_LT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_GTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_LTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
@@ -825,12 +921,16 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
 
+    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U8, emit_binop_u16 },
+    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U8, emit_binop_u16 },
     { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_GT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_LT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_GTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_LTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
@@ -841,7 +941,6 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, emit_array_indexing_u16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
-    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
 
     { BUILTIN_LOGICAL_AND, TT_PRIM_U8, TT_PRIM_U8, emit_logical_and },
     { BUILTIN_LOGICAL_OR, TT_PRIM_U8, TT_PRIM_U8, emit_logical_or },

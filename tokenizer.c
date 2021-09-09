@@ -31,6 +31,10 @@ const char *token_type_cstr(enum TokType type) {
         case T_NEQ: return "!=";
         case T_GT: return ">";
         case T_LT: return "<";
+        case T_GTE: return ">=";
+        case T_LTE: return "<=";
+        case T_SHIFT_LEFT: return "<<";
+        case T_SHIFT_RIGHT: return ">>";
         case T_AS: return "as";
         case T_RETURN: return "return";
         case T_ASTERISK: return "*";
@@ -85,7 +89,11 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '!') { EMIT(((Token) { T_EXCLAMATION, line, col, filename })); NEXT(); }
         else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col, filename })); NEXT(); }
+        else if (*pos == '>' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_GTE, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '>' && LOOK_AHEAD() == '>') { EMIT(((Token) { T_SHIFT_RIGHT, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col, filename })); NEXT(); }
+        else if (*pos == '<' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_LTE, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '<' && LOOK_AHEAD() == '<') { EMIT(((Token) { T_SHIFT_LEFT, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '<') { EMIT(((Token) { T_LT, line, col, filename })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col, filename })); NEXT(); }
         else if (*pos == '\'') {
