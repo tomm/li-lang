@@ -287,6 +287,24 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 chomp(toks, T_RBRACE);
                 return expr;
             }
+        case T_BREAK:
+        case T_CONTINUE:
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_GOTO,
+                        .goto_ = {
+                            .is_continue = t->type == T_CONTINUE,
+                            .target = 0, // resolved later
+                        }
+                    }
+                });
+                return expr;
+            }
+            break;
         default:
             parse_error("Expected primary expression", 0, t);
     }
@@ -1191,10 +1209,14 @@ void print_ast(NodeIdx nidx, int depth) {
             break;
         case AST_EXPR:
             _indent(depth+1);
-            printf("(%.*s) ",
+            printf("(node %d: %.*s) ",
+                    nidx,
                     (int)get_type(node->expr.eval_type)->name.len,
                     get_type(node->expr.eval_type)->name.s);
             switch (node->expr.type) {
+                case EXPR_GOTO:
+                    printf("%s (goto node %d)\n", node->expr.goto_.is_continue ? "continue" : "break", node->expr.goto_.target);
+                    break;
                 case EXPR_ASM:
                     printf("inline asm\n");
                     break;

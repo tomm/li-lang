@@ -1291,6 +1291,10 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.while_loop.condition));
             size = max(size, get_max_local_vars_size(node->expr.while_loop.body));
             break;
+        case EXPR_GOTO:
+            break;
+        default:
+            assert(false);
     }
     return size;
 }

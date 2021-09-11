@@ -1,7 +1,7 @@
-* more loops
-* rom constants
-* assignment on declaration
-* pointer arithmetic
+* for loop
+* do while loop
+* break, continue
+* switch
 * passing arrays by value
 * structs
 * bool type

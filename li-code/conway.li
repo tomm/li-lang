@@ -55,9 +55,9 @@ fn life_generation() {
 fn memcpy(dest: &u8, src: &u8, len: u16) {
     while (len != 0u16) {
         *dest = *src;
-        dest = dest + 1u16;
-        src = src + 1u16;
-        len = len - 1u16;
+        dest += 1u16;
+        src += 1u16;
+        len -= 1u16;
     }
 }
 

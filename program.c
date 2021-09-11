@@ -15,14 +15,23 @@ typedef struct Variable {
     Str name;
     TypeId type;
 } Variable;
-typedef Vec Scope;
-static Vec new_localscope() { return vec_init(sizeof(Variable)); }
-static void free_localscope(Vec *scope) { vec_free(scope); }
-static void scope_push(Vec *scope, Variable var) { vec_push(scope, &var); }
-static void scope_pop(Vec *scope) { vec_pop(scope, NULL); }
-static Variable *scope_lookup(Vec *scope, Str name) {
-    for (int i=0; i<scope->len; ++i) {
-        Variable *var = vec_get(scope, i);
+
+typedef struct Scope {
+    Vec vars;
+    NodeIdx break_continue_target;
+} Scope;
+static Scope new_localscope() {
+    return (Scope){
+        .vars = vec_init(sizeof(Variable)),
+        .break_continue_target = 0
+    };
+}
+static void free_localscope(Scope *scope) { vec_free(&scope->vars); }
+static void scope_push(Scope *scope, Variable var) { vec_push(&scope->vars, &var); }
+static void scope_pop(Scope *scope) { vec_pop(&scope->vars, NULL); }
+static Variable *scope_lookup(Scope *scope, Str name) {
+    for (int i=0; i<scope->vars.len; ++i) {
+        Variable *var = vec_get(&scope->vars, i);
         if (Str_eq2(var->name, name)) return var;
     }
     return NULL;
@@ -156,10 +165,20 @@ error:
 }
 
 
+// XXX also resolves gotos. why do we do both? because AST isn't simple
+// to traverse...
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
     AstNode *n = get_node(expr);
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
+        case EXPR_GOTO:
+            if (scope->break_continue_target == 0) {
+                fatal_error(n->start_token, "Break/continue used outside of loop");
+            } else {
+                n->expr.goto_.target = scope->break_continue_target;
+            }
+            t = VOID;
+            break;
         case EXPR_ASM:
             t = VOID;
             break;
@@ -328,7 +347,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                             (int)get_type(cond)->name.len,
                             get_type(cond)->name.s);
                 }
+                scope->break_continue_target = expr;
                 typecheck_expr(prog, scope, n->expr.while_loop.body);
+                scope->break_continue_target = 0;
 
                 t = VOID;
             }

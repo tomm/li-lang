@@ -53,6 +53,7 @@ typedef struct AstNode {
                 EXPR_IF_ELSE,
                 EXPR_LOCAL_SCOPE,
                 EXPR_WHILE_LOOP,
+                EXPR_GOTO,
             } type;
 
             TypeId eval_type;
@@ -69,6 +70,11 @@ typedef struct AstNode {
                         NodeIdx literal_array_first_val;
                     };
                 } literal;
+
+                struct {
+                    bool is_continue; // otherwise is break
+                    NodeIdx target;
+                } goto_;
 
                 struct {
                     Str var_name;

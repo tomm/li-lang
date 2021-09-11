@@ -39,6 +39,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_RETURN: return "return";
         case T_ASTERISK: return "*";
         case T_COMMA: return ",";
+        case T_BREAK: return "break";
+        case T_CONTINUE: return "continue";
         case T_IDENT: return "identifier";
         case T_LITERAL_STR: return "literal str";
         case T_LITERAL_U8: return "literal u8";
@@ -180,6 +182,10 @@ Vec lex(Str buf, const char *filename) {
                 EMIT(((Token) { T_ELSE, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "while")) {
                 EMIT(((Token) { T_WHILE, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "break")) {
+                EMIT(((Token) { T_BREAK, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "continue")) {
+                EMIT(((Token) { T_CONTINUE, t.line, t.col, filename }));
             } else {
                 EMIT(t);
             }
