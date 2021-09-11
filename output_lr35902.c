@@ -93,10 +93,24 @@ typedef struct RamVariable {
     int size_bytes;
 } RamVariable;
 
-Vec /*<RamVariable>*/ _ram_vars;
+static Vec /*<RamVariable>*/ _ram_vars;
 
 
+typedef struct NodeIdxJumpLabel {
+    NodeIdx node;
+    int label_num;
+    int stack_offset; // so we can correct stack before jump (due to temporaries)
+} NodeIdxJumpLabel;
 
+static Vec /*<NodeIdxJumpLabel>*/ _jump_labels;
+
+NodeIdxJumpLabel *lookup_jump_label(NodeIdx node) {
+    for (int i=0; i<_jump_labels.len; ++i) {
+        NodeIdxJumpLabel *l = vec_get(&_jump_labels, i);
+        if (l->node == node) return l;
+    }
+    return NULL;
+}
 
 typedef int StackVarIdx;
 typedef struct StackVar {
@@ -1072,17 +1086,22 @@ static Value emit_while_loop(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_WHILE_LOOP);
 
-    const int start_label = _local_label_seq++;
-    const int end_label = _local_label_seq++;
+    const int jump_label = _local_label_seq++;
 
-    _label(start_label);
+    vec_push(&_jump_labels, &(NodeIdxJumpLabel) {
+        .node = expr,
+        .label_num = jump_label,
+        .stack_offset = frame.stack_offset,
+    });
+
+    __(".l%d_continue:", jump_label);
 
     Value condition = emit_expression(n->expr.while_loop.condition, frame);
     emit_truthy_test_to_zflag(get_node(n->expr.while_loop.condition)->start_token, condition);
-    _i("jp z, .l%d", end_label);
+    _i("jp z, .l%d_break", jump_label);
     /*Value body =*/ emit_expression(n->expr.while_loop.body, frame);
-    _i("jp .l%d", start_label);
-    _label(end_label);
+    _i("jp .l%d_continue", jump_label);
+    __(".l%d_break:", jump_label);
 
     return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
 }
@@ -1178,6 +1197,23 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
     assert(n->type == AST_EXPR);
 
     switch (n->expr.type) {
+        case EXPR_GOTO:
+            {
+                NodeIdxJumpLabel *l = lookup_jump_label(n->expr.goto_.target);
+                assert(l != NULL);
+                const int stack_correction = frame.stack_offset - l->stack_offset;
+                if (stack_correction) {
+                    printf("STACK CORRECT %d\n", stack_correction);
+                    _i("add sp, %d", stack_correction);
+                }
+                if (n->expr.goto_.is_continue) {
+                    _i("jp .l%d_continue", l->label_num);
+                } else {
+                    _i("jp .l%d_break", l->label_num);
+                }
+            }
+            // XXX should be never type
+            return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         case EXPR_BUILTIN:
             return emit_builtin(expr, frame);
         case EXPR_ASM:
@@ -1408,6 +1444,7 @@ static void emit_ram_globals() {
 static void init() {
     _stack_vars = vec_init(sizeof(StackVar));
     _ram_vars = vec_init(sizeof(RamVariable));
+    _jump_labels = vec_init(sizeof(NodeIdxJumpLabel));
 }
 
 void output_lr35902(Program *prog) {
@@ -1425,6 +1462,7 @@ void output_lr35902(Program *prog) {
         AstNode *n = get_node(node);
         if (n->type == AST_FN) {
             if (n->fn.body != 0) {
+                vec_zero(&_jump_labels);
                 emit_fn(node);
             }
         }

@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
         typecheck_program(&prog);
 
         //print_ast(prog.root, 0);
+        
         if (!noemit) {
             output_lr35902(&prog);
         }

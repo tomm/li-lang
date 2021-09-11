@@ -29,10 +29,8 @@ syntax keyword liStatement      return
 "syntax keyword liClassDecl      extends with implements
 syntax keyword liBranch         break continue nextgroup=liUserLabelRef skipwhite
 syntax keyword liKeyword        fn var asm include as const
-"syntax match   liUserLabelRef   "\k\+" contained
-
-"syntax region  liLabelRegion   transparent matchgroup=liLabel start="\<case\>" matchgroup=NONE end=":"
-"syntax keyword liLabel         default
+syntax match   liLabelUse       display "\'\%([^[:cntrl:][:space:][:punct:][:digit:]]\|_\)\%([^[:cntrl:][:punct:][:space:]]\|_\)*"
+syntax match   liLabelDecl      display "\'\%([^[:cntrl:][:space:][:punct:][:digit:]]\|_\)\%([^[:cntrl:][:punct:][:space:]]\|_\)*:"
 
 "syntax match liLibrary         "^\(import\|part of\|part\|export\|library\|show\|hide\)\s"
 
@@ -65,7 +63,8 @@ syntax match liHexNumber   display "\<0x[a-fA-F0-9_]\+\%([iu]\%(size\|8\|16\)\)\
 " The default highlighting.
 highlight default link liBranch          Conditional
 highlight default link liUserLabelRef    liUserLabel
-highlight default link liLabel           Label
+highlight default link liLabelDecl       Label
+highlight default link liLabelUse        Special
 highlight default link liUserLabel       Label
 highlight default link liConditional     Conditional
 highlight default link liRepeat          Repeat

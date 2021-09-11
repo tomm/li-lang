@@ -16,14 +16,19 @@ typedef struct Variable {
     TypeId type;
 } Variable;
 
+typedef struct JumpLabel {
+    Str label;
+    NodeIdx node;
+} JumpLabel;
+
 typedef struct Scope {
-    Vec vars;
-    NodeIdx break_continue_target;
+    Vec /*<Variable>*/ vars;
+    Vec /*<JumpLabel>*/ labels;
 } Scope;
 static Scope new_localscope() {
     return (Scope){
         .vars = vec_init(sizeof(Variable)),
-        .break_continue_target = 0
+        .labels = vec_init(sizeof(JumpLabel)),
     };
 }
 static void free_localscope(Scope *scope) { vec_free(&scope->vars); }
@@ -33,6 +38,22 @@ static Variable *scope_lookup(Scope *scope, Str name) {
     for (int i=0; i<scope->vars.len; ++i) {
         Variable *var = vec_get(&scope->vars, i);
         if (Str_eq2(var->name, name)) return var;
+    }
+    return NULL;
+}
+static void label_push(Scope *scope, JumpLabel l) { vec_push(&scope->labels, &l); }
+static void label_pop(Scope *scope) { vec_pop(&scope->labels, NULL); }
+static JumpLabel *label_lookup(Scope *scope, Str *name) {
+    for (int i=scope->labels.len-1; i>=0; --i) {
+        JumpLabel *l = vec_get(&scope->labels, i);
+        // if name is empty (ie break/continue without label) resolve to
+        // most recently scoped label
+        if (name->s == NULL) {
+            return l;
+        }
+        if (Str_eq2(*name, l->label)) {
+            return l;
+        }
     }
     return NULL;
 }
@@ -172,10 +193,16 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
         case EXPR_GOTO:
-            if (scope->break_continue_target == 0) {
-                fatal_error(n->start_token, "Break/continue used outside of loop");
-            } else {
-                n->expr.goto_.target = scope->break_continue_target;
+            {
+                if (scope->labels.len == 0) {
+                    fatal_error(n->start_token, "Break/continue used outside of loop");
+                }
+                JumpLabel *l = label_lookup(scope, &n->expr.goto_.label);
+                if (l == NULL) {
+                    fatal_error(n->start_token, "Unknown label '%.*s'",
+                            n->expr.goto_.label.len, n->expr.goto_.label.s);
+                }
+                n->expr.goto_.target = l->node;
             }
             t = VOID;
             break;
@@ -347,9 +374,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                             (int)get_type(cond)->name.len,
                             get_type(cond)->name.s);
                 }
-                scope->break_continue_target = expr;
+                label_push(scope, (JumpLabel) {
+                    .label = n->expr.while_loop.label,
+                    .node = expr
+                });
                 typecheck_expr(prog, scope, n->expr.while_loop.body);
-                scope->break_continue_target = 0;
+                label_pop(scope);
 
                 t = VOID;
             }

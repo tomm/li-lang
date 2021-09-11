@@ -73,7 +73,8 @@ typedef struct AstNode {
 
                 struct {
                     bool is_continue; // otherwise is break
-                    NodeIdx target;
+                    Str label;
+                    NodeIdx target; // resolved in second frontend pass
                 } goto_;
 
                 struct {
@@ -84,6 +85,7 @@ typedef struct AstNode {
                 } local_scope;
 
                 struct {
+                    Str label;
                     NodeIdx condition;
                     NodeIdx body;
                 } while_loop;

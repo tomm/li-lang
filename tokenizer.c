@@ -42,6 +42,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_BREAK: return "break";
         case T_CONTINUE: return "continue";
         case T_IDENT: return "identifier";
+        case T_JUMP_LABEL: return "label";
         case T_LITERAL_STR: return "literal str";
         case T_LITERAL_U8: return "literal u8";
         case T_LITERAL_U16: return "literal u16";
@@ -99,21 +100,36 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '<') { EMIT(((Token) { T_LT, line, col, filename })); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col, filename })); NEXT(); }
         else if (*pos == '\'') {
-            Token t;
-            t.line = line;
-            t.col = col;
-            t.filename = filename;
-            t.type = T_LITERAL_U8;
+            if (LOOK_AHEAD2() != '\'' && (isalpha(LOOK_AHEAD()) || LOOK_AHEAD() == '_')) {
+                // jump label
+                Token t = { T_JUMP_LABEL, line, col, filename };
+                t.label.s = ++pos;
+                t.label.len = 0;
 
-            NEXT();
-            t.int_literal = *pos;
-            NEXT();
-            if (*pos != '\'') {
-                error(&t, "Malformed character literal");
+                while ((isalpha(*pos) || isdigit(*pos) || *pos == '_') && pos < end) {
+                    NEXT();
+                    ++t.label.len;
+                }
+                last_tok_was_literal = true;
+                EMIT(t);
+            } else {
+                // u8 char literal
+                Token t;
+                t.line = line;
+                t.col = col;
+                t.filename = filename;
+                t.type = T_LITERAL_U8;
+
+                NEXT();
+                t.int_literal = *pos;
+                NEXT();
+                if (*pos != '\'') {
+                    error(&t, "Malformed character literal");
+                }
+                // XXX handle escape chars
+                NEXT();
+                EMIT(t);
             }
-            // XXX handle escape chars
-            NEXT();
-            EMIT(t);
         }
         else if (!last_tok_was_literal && (*pos == '"' || *pos == '`')) {
             const char delim = *pos;

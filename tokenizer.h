@@ -45,6 +45,7 @@ typedef struct Token {
         T_BREAK,
         T_CONTINUE,
         T_IDENT,
+        T_JUMP_LABEL,
         T_LITERAL_STR,
         T_LITERAL_U8,
         T_LITERAL_U16,
@@ -59,6 +60,7 @@ typedef struct Token {
 
     union {
         Str ident;
+        Str label;
         int int_literal;
         Str str_literal;
     };
