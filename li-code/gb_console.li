@@ -18,20 +18,14 @@ fn puthex(v: u16) {
         ld a, b
         swap a
         and a, $f
-        jr z, .z4
         call .putchar_hex
-    .z4
         ld a, b
         and a, $f
-        jr z, .z3
         call .putchar_hex
-    .z3
         ld a, c
         swap a
         and a, $f
-        jr z, .z2
         call .putchar_hex
-    .z2
         ld a, c
         and a, $f
         call .putchar_hex

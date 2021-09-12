@@ -266,7 +266,14 @@ static Value emit_pop(Value v, StackFrame *frame, bool to_aux_reg) {
                     _i("pop %s", to_aux_reg ? "de" : "hl");
                     frame->stack_offset -= 2;
                     return (Value) { .storage = st, .typeId = U16 };
-                default: assert(false);
+                default:
+                    if (get_type(v.typeId)->type == TT_PTR) {
+                        _i("pop hl");
+                        frame->stack_offset -= 2;
+                        return v;
+                    } else {
+                        assert(false);
+                    }
             }
         case ST_REG_EA:
             _i("pop hl");
@@ -1024,6 +1031,8 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     } else if (v1.typeId == U16 && to_type == U8) {
         v1 = emit_value_to_register(v1, false);  // v1 in `hl`
         _i("ld a, l");
+    } else if (get_type(to_type)->type == TT_PTR && get_type(v1.typeId)->type == TT_PTR) {
+        // fine. nothing to do
     } else if (v1.typeId == U16 && get_type(to_type)->type == TT_PTR) {
         // fine. nothing to do
     } else if (to_type == U16 && get_type(v1.typeId)->type == TT_PTR) {

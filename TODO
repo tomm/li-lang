@@ -1,3 +1,4 @@
+* poor int literal inference is annoying
 * for loop
 * do while loop
 * return

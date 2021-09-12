@@ -22,3 +22,9 @@ conway:
 	rgbasm out.asm -o conway.o
 	rgblink -o conway.gb conway.o
 	rgbfix -v -p 0 conway.gb
+	
+benchmark:
+	./lic li-code/benchmark.li
+	rgbasm out.asm -o benchmark.o
+	rgblink -o benchmark.gb benchmark.o
+	rgbfix -v -p 0 benchmark.gb

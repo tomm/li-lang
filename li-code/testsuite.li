@@ -215,6 +215,7 @@ fn main() {
     test_var_globals();
     test_ptr();
     test_ptr_arith();
+    test_ptr_cast();
     test_while();
     test_while_break();
 
@@ -304,6 +305,12 @@ test_fwd_decl:
         inc a
         ret
 `);
+
+fn test_ptr_cast() {
+    var x: u16 = 0xcafe;
+    expect(*(&x as &u8) == 0xfe);
+    expect(*((&x as &u8) + 1u16) == 0xca);
+}
 
 fn test_ptr_arith() {
     var a: [u16; 4];
@@ -440,7 +447,10 @@ fn test_while_break() {
     while i < 5 {
         i = i + 1;
         if i == 2 { continue };
-        if i == 4 { break };
+        if i == 4 { i + {break; 2} };
+        //               ^^
+        // intentionally break where a temporary is on the
+        // stack, to check stack correction is right
         arr[i] = -i;
     };
 

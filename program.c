@@ -219,7 +219,8 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                     (from_type == U8 && t == U16) ||
                     (from_type == U16 && t == U8) ||
                     (get_type(t)->type == TT_PTR && from_type == U16) ||
-                    (get_type(from_type)->type == TT_PTR && t == U16)
+                    (get_type(from_type)->type == TT_PTR && t == U16) ||
+                    (get_type(from_type)->type == TT_PTR && get_type(t)->type == TT_PTR)
                 ) {
                     // fine
                 } else {
