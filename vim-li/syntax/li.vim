@@ -51,8 +51,8 @@ syntax region  liMultilineString     start=+\z(["`]\)+ skip=+\\\\\|\\\z1+ end=+\
 "syntax region  liRawMultilineString     start=+r\z("\{3\}\|'\{3\}\)+ end=+\z1+ contains=@Spell
 "syntax match   liInterpolation contained "\$\(\w\+\|{[^}]\+}\)"
 "syntax match   liSpecialChar   contained "\\\(u\x\{4\}\|u{\x\+}\|x\x\x\|x{\x\+}\|.\)"
-syntax keyword liGbAsm contained ld xor and or add sub sbc rr rl db ds call di ei halt nop jp jr ret reti cp inc dec push pop swap
-syntax keyword liGbReg contained a b c d e h l f af bc de hl sp
+syntax keyword liGbAsm contained ld xor and or add sub sbc rr rl db ds call di ei halt nop jp jr ret reti cp inc dec push pop swap sla bit srl adc
+syntax keyword liGbReg contained a b c d e h l f af bc de hl sp z nz nc
 syntax match liAsmLabel contained /\I\i*:/
 syn match liAsmComment contained /;.*/
 

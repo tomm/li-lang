@@ -1,34 +1,242 @@
 asm("
-    ; 248 cycles
-    __mulu8:
-        ; a = a*b
-            ld c, a
-            xor a, a
-        REPT 8
-            srl b
-            jr nc, .no\@
-            add a, c
-        .no\@
-            sla c
-        ENDR
-            ret
+; 248 cycles
+__mulu8:
+    ; a = a*b
+        ld c, a
+        xor a, a
+    REPT 8
+        srl b
+        jr nc, .no\@
+        add a, c
+    .no\@
+        sla c
+    ENDR
+        ret
 
-    ; 700 cycles
-    __mulu16:
-        ; hl = hl*de
-            ld b, h
-            ld c, l
-            xor a
-            ld h, a
-            ld l, a
-        REPT 16
-            srl b
-            rr c
-            jr nc, .no\@
-            add hl, de
-        .no\@
-            sla e
-            rl d
-        ENDR
-            ret
+; 700 cycles
+__mulu16:
+    ; hl = hl*de
+        ld b, h
+        ld c, l
+        xor a
+        ld h, a
+        ld l, a
+    REPT 16
+        srl b
+        rr c
+        jr nc, .no\@
+        add hl, de
+    .no\@
+        sla e
+        rl d
+    ENDR
+        ret
+
+__divu8:
+    ; [remainder:quotient] b:a = a / b
+        ld c, b
+        ld b, a
+
+        xor a
+        cp a, c
+        jr z, .zero_divisor
+
+        ld a, b
+        cp a, c
+        jr c, .divisor_gt_dividend
+        ; b / c
+        ; find highest POT multiple of divisor (c) that is <= dividend (b)
+        ; 
+        ld e, c  ; e = multiple of c
+        ld d, 1  ; d = e/c
+
+    .potmul_loop
+        ld a, b
+        cp a, e
+        jr c, .overshot
+        jr z, .found_max_pot
+        bit 7, e
+        jp nz, .found_max_pot
+        sla e
+        sla d
+        jr .potmul_loop
+
+    .overshot
+        srl d
+        srl e
+        ; found max multiple
+    .found_max_pot
+
+        ; now subtract decreasing POT multiples of c from b,
+        ; composing the quotient
+        ld l, 0 ; quotient
+
+    .div_loop
+        ld a, b
+        cp a, e
+        jr c, .not_contain_this_pot
+        ; subtract POT multiple of c from b
+        ld a, b
+        sub a, e
+        ld b, a
+
+        ; increase quotient
+        ld a, l
+        add a, d
+        ld l, a
+    .not_contain_this_pot
+        srl e
+        srl d
+        jr nz, .div_loop
+        ld a, l
+        ret
+
+    .divisor_gt_dividend
+        ld a, 0
+        ret
+    
+    .zero_divisor
+        ; saturation divide ;)
+        ld a, 255
+        ld b, 0
+        ret
+
+__divu16:
+    ; remainder:quotient de:hl = hl / de
+        ld a, d
+        or e
+        jr z, .zero_divisor
+
+        ld a, h
+        cp a, d
+        jr c, .divisor_gt_dividend
+        jr nz, .skip
+        ld a, l
+        cp a, e
+        jr c, .divisor_gt_dividend
+    .skip
+        ; find highest POT multiple of divisor that is <= dividend
+        ; de = POT_mul (pot multiple of divisor)
+        ; hl = dividend
+        ; bc = mul_num (POT_mul / divisor)
+        ld b, 0
+        ld c, 1
+
+    .potmul_loop
+        ; POT_mul > dividend? we overshot
+        ld a, h
+        cp a, d
+        jr c, .overshot
+        jr nz, .skip2
+        ld a, l
+        cp a, e
+        jr c, .overshot
+    .skip2
+        ; if highest bit of POT_mul is set, can't rotate further
+        bit 7, d
+        jp nz, .found_max_pot
+        ; POT_mul *= 2
+        sla e
+        rl d
+        ; mul_num *= 2
+        sla c
+        rl b
+        jr .potmul_loop
+
+    .overshot
+        ; POT_mul /= 2
+        srl d
+        rr e
+        ; mul_num /= 2
+        srl b
+        rr c
+
+    .found_max_pot
+        ; now subtract decreasing POT multiples of divisor from dividendm composing the quotient
+
+        push hl
+        xor a
+        ld l, a
+        ld h, a
+        push hl
+        ; stack is:
+        ; sp+0 = quotient
+        ; sp+2 = remainder
+
+        ; regs are:
+        ; de = POT_mul
+        ; hl = <ptr temporary>
+        ; bc = mul_num
+
+    .div_loop
+        ; POT_mul > remainder?
+        ld hl, sp+3
+
+        ld a, [hl-] ; high byte of remainder
+        cp a, d
+        jr c, .not_contain_this_pot
+        jr nz, .skip3
+
+        ld a, [hl]
+        cp a, e
+        jr c, .not_contain_this_pot
+    .skip3
+        ; remainder -= POT_mul
+        ld hl, sp+2
+
+        ld a, [hl]
+        sub a, e
+        ld [hl+], a
+
+        ld a, [hl]
+        sbc a, d
+        ld [hl], a
+
+        ; quotient += mul_num
+        ld hl, sp+0
+        ld a, [hl]
+        add a, c
+        ld [hl+], a
+
+        ld a, [hl]
+        adc a, b
+        ld [hl], a
+    .not_contain_this_pot
+        ; POT_ml /= 2
+        srl d
+        rr e
+        ; mul_num /= 2
+        srl b
+        rr c
+
+        ; if mul_num != 0 { goto .div_loop }
+        ld a, b
+        or a, c
+        jr nz, .div_loop
+
+        ; quotient to hl, remainder to de
+        pop hl
+        pop de
+
+        ret
+
+    .zero_divisor
+        ; saturation arith. 1/0 = 2^16 - 1
+        ld a, $ff
+        ld h, a
+        ld l, a
+        xor a
+        ld d, a
+        ld e, a
+        ret
+
+    .divisor_gt_dividend
+        ld d, h
+        ld e, l
+        xor a
+        ld h, a
+        ld l, a
+        ret
+
+
 ");

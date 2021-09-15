@@ -26,6 +26,14 @@ const char *token_type_cstr(enum TokType type) {
         case T_ASSIGN: return "=";
         case T_PLUSASSIGN: return "+=";
         case T_MINUSASSIGN: return "-=";
+        case T_MULASSIGN: return "*=";
+        case T_DIVASSIGN: return "/=";
+        case T_MODASSIGN: return "%=";
+        case T_LSHIFTASSIGN: return "<<=";
+        case T_RSHIFTASSIGN: return ">>=";
+        case T_BITANDASSIGN: return "&=";
+        case T_BITORASSIGN: return "|=";
+        case T_BITXORASSIGN: return "^=";
         case T_EXCLAMATION: return "!";
         case T_EQ: return "==";
         case T_NEQ: return "!=";
@@ -38,6 +46,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_AS: return "as";
         case T_RETURN: return "return";
         case T_ASTERISK: return "*";
+        case T_SLASH: return "/";
+        case T_PERCENT: return "%";
         case T_COMMA: return ",";
         case T_BREAK: return "break";
         case T_CONTINUE: return "continue";
@@ -85,19 +95,27 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
         else if (*pos == '+' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_PLUSASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
+        else if (*pos == '&' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_BITANDASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_AMPERSAND, line, col, filename })); NEXT(); }
+        else if (*pos == '|' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_BITORASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '|') { EMIT(((Token) { T_PIPE, line, col, filename })); NEXT(); }
+        else if (*pos == '^' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_BITXORASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '^') { EMIT(((Token) { T_ACUTE, line, col, filename })); NEXT(); }
+        else if (*pos == '%' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_MODASSIGN, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '%') { EMIT(((Token) { T_PERCENT, line, col, filename })); NEXT(); }
         else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '!') { EMIT(((Token) { T_EXCLAMATION, line, col, filename })); NEXT(); }
         else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '=') { EMIT(((Token) { T_ASSIGN, line, col, filename })); NEXT(); }
+        else if (*pos == '>' && LOOK_AHEAD() == '>' && LOOK_AHEAD2() == '=') { EMIT(((Token) { T_RSHIFTASSIGN, line, col, filename })); NEXT(); NEXT(); NEXT(); }
         else if (*pos == '>' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_GTE, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '>' && LOOK_AHEAD() == '>') { EMIT(((Token) { T_SHIFT_RIGHT, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '>') { EMIT(((Token) { T_GT, line, col, filename })); NEXT(); }
+        else if (*pos == '<' && LOOK_AHEAD() == '<' && LOOK_AHEAD2() == '=') { EMIT(((Token) { T_LSHIFTASSIGN, line, col, filename })); NEXT(); NEXT(); NEXT(); }
         else if (*pos == '<' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_LTE, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '<' && LOOK_AHEAD() == '<') { EMIT(((Token) { T_SHIFT_LEFT, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '<') { EMIT(((Token) { T_LT, line, col, filename })); NEXT(); }
+        else if (*pos == '*' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_MULASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '*') { EMIT(((Token) { T_ASTERISK, line, col, filename })); NEXT(); }
         else if (*pos == '\'') {
             if (LOOK_AHEAD2() != '\'' && (isalpha(LOOK_AHEAD()) || LOOK_AHEAD() == '_')) {
@@ -172,6 +190,8 @@ Vec lex(Str buf, const char *filename) {
             if (pos < end) NEXT();
             if (pos < end) NEXT();
         }
+        else if (*pos == '/' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_DIVASSIGN, line, col, filename })); NEXT(); NEXT(); }
+        else if (*pos == '/') { EMIT(((Token) { T_SLASH, line, col, filename })); NEXT(); }
         else if (!last_tok_was_literal && (*pos == '_' || isalpha(*pos))) {
             Token t = { T_IDENT, line, col, filename };
             t.ident.s = pos;

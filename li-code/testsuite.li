@@ -190,6 +190,29 @@ fn main() {
     expect(mul_u8(255,255) == 1);
     expect(mul_u16(255u16,255u16) == 0xfe01);
     expect(mul_u16(123u16,100u16) == 12300);
+    // divide
+    expect(div_u8(23,0) == 255); // saturation on zero divide :)
+    expect(div_u8(133,200) == 0); // divisor > dividend
+    expect(div_u8(255,7) == 36);
+    expect(div_u8(5,5) == 1);
+    expect(div_u8(10,5) == 2);
+    expect(div_u16(65535, 1u16) == 65535);
+    expect(div_u16(65535, 2u16) == 32767);
+    expect(div_u16(50845, 8969) == 5u16);
+    expect(div_u16(1234, 0u16) == 65535);
+    expect(div_u16(1234, 2000) == 0u16);
+    expect(div_u16(44132, 127u16) == 347);
+    // modulo
+    expect(mod_u8(23,0) == 0);
+    expect(mod_u8(133,200) == 133); // divisor > dividend
+    expect(mod_u8(255,7) == 3);
+    expect(mod_u8(5,5) == 0);
+    expect(mod_u16(65535, 1u16) == 0u16);
+    expect(mod_u16(65535, 2u16) == 1u16);
+    expect(mod_u16(50845, 8969) == 6000);
+    expect(mod_u16(1234, 0u16) == 0u16);
+    expect(mod_u16(1234, 2000) == 1234);
+    expect(mod_u16(44132, 127u16) == 63u16);
     // shifts
     expect(shl_u8(6, 0) == 6);
     expect(shl_u8(6, 3) == 48);
@@ -200,13 +223,72 @@ fn main() {
     expect(shr_u16(6789, 0) == 6789);
     expect(shr_u16(6789, 3) == 848);
 
-    // test +=
+    // test u8 op-assigns
     (
-        var x = 0;
-        x += 1;
-        expect(x == 1);
-        x += 5;
+        var x = 1;
+        expect((x += 5) == 6);
         expect(x == 6);
+
+        expect((x -= 2) == 4);
+        expect(x == 4);
+
+        expect((x *= 30) == 120);
+        expect(x == 120);
+
+        expect((x /= 6) == 20);
+        expect(x == 20);
+
+        expect((x <<= 3) == 160);
+        expect(x == 160);
+
+        expect((x >>= 2) == 40);
+        expect(x == 40);
+
+        expect((x |= 3) == 43);
+        expect(x == 43);
+
+        expect((x ^= 1) == 42);
+        expect(x == 42);
+
+        expect((x &= 0x23) == 0x22);
+        expect(x == 0x22);
+
+        expect((x %= 6) == 4);
+        expect(x == 4);
+    );
+
+    // test u8 op-assigns
+    (
+        var x = 1234u16;
+        expect((x += 2345u16) == 3579u16);
+        expect(x == 3579u16);
+
+        expect((x -= 2345u16) == 1234u16);
+        expect(x == 1234u16);
+
+        expect((x |= 0x8181) == 0x85d3);
+        expect(x == 0x85d3);
+
+        expect((x &= 0xf0f0) == 0x80d0);
+        expect(x == 0x80d0);
+
+        expect((x ^= 0x8001) == 0xd1u16);
+        expect(x == 0xd1u16);
+
+        expect((x <<= 4) == 0xd10);
+        expect(x == 0xd10);
+
+        expect((x >>= 2) == 0x344);
+        expect(x == 0x344);
+
+        expect((x *= 3u16) == 0x9cc);
+        expect(x == 0x9cc);
+
+        expect((x /= 5u16) == 0x1f5);
+        expect(x == 0x1f5);
+
+        expect((x %= 0xc3u16) == 0x6fu16);
+        expect(x == 0x6fu16);
     );
 
     test_u16_assigns();
@@ -250,6 +332,10 @@ fn add_u8(a: u8, b: u8) -> u8 { a + b }
 fn add_u16(a: u16, b: u16) -> u16 { a + b }
 fn sub_u8(a: u8, b: u8) -> u8 { a - b }
 fn sub_u16(a: u16, b: u16) -> u16 { a - b }
+fn div_u8(a: u8, b: u8) -> u8 { a / b }
+fn div_u16(a: u16, b: u16) -> u16 { a / b }
+fn mod_u8(a: u8, b: u8) -> u8 { a % b }
+fn mod_u16(a: u16, b: u16) -> u16 { a % b }
 fn mul_u8(a: u8, b: u8) -> u8 { a * b }
 fn mul_u16(a: u16, b: u16) -> u16 { a * b }
 fn shl_u8(a: u8, b: u8) -> u8 { a << b }

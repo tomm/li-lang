@@ -17,9 +17,19 @@ const char* builtin_name(enum BuiltinOp op) {
         case BUILTIN_LOGICAL_OR: return "logical or";
         case BUILTIN_UNARY_LOGICAL_NOT: return "logical not";
         case BUILTIN_MUL: return "multiply";
+        case BUILTIN_DIV: return "divide";
+        case BUILTIN_MODULO: return "modulo";
         case BUILTIN_ASSIGN: return "assignment";
         case BUILTIN_PLUSASSIGN: return "+=";
         case BUILTIN_MINUSASSIGN: return "-=";
+        case BUILTIN_MULASSIGN: return "*=";
+        case BUILTIN_DIVASSIGN: return "/=";
+        case BUILTIN_MODASSIGN: return "%=";
+        case BUILTIN_LSHIFTASSIGN: return "<<=";
+        case BUILTIN_RSHIFTASSIGN: return ">>=";
+        case BUILTIN_BITANDASSIGN: return "&=";
+        case BUILTIN_BITORASSIGN: return "|=";
+        case BUILTIN_BITXORASSIGN: return "^=";
         case BUILTIN_EQ: return "equality";
         case BUILTIN_NEQ: return "inequality";
         case BUILTIN_LT: return "less than";
@@ -446,8 +456,10 @@ static NodeIdx parse_cast_expression(TokenCursor *toks) {
 static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
     NodeIdx n = parse_cast_expression(toks);
 
-    while (tok_peek(toks, 0)->type == T_ASTERISK) {
-        const Token *start_token = chomp(toks, T_ASTERISK);
+    while (tok_peek(toks, 0)->type == T_ASTERISK ||
+           tok_peek(toks, 0)->type == T_SLASH ||
+           tok_peek(toks, 0)->type == T_PERCENT) {
+        const Token *t = tok_next(toks);
 
         ChildCursor args = ChildCursor_init();
         ChildCursor_append(&args, n);
@@ -456,11 +468,17 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
         n = alloc_node();
         set_node(n, &(AstNode) {
             .type = AST_EXPR,
-            .start_token = start_token,
+            .start_token = t,
             .expr = {
                 .type = EXPR_BUILTIN,
                 .builtin = {
-                    .op = BUILTIN_MUL,
+                    .op = t->type == T_ASTERISK
+                        ? BUILTIN_MUL
+                        : t->type == T_SLASH
+                        ? BUILTIN_DIV
+                        : t->type == T_PERCENT
+                        ? BUILTIN_MODULO
+                        : (assert(false), 0),
                     .first_arg = args.first_child,
                 }
             }
@@ -688,6 +706,14 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
 
     // right associative
     if (tok_peek(toks, 0)->type == T_ASSIGN ||
+        tok_peek(toks, 0)->type == T_MULASSIGN ||
+        tok_peek(toks, 0)->type == T_DIVASSIGN ||
+        tok_peek(toks, 0)->type == T_MODASSIGN ||
+        tok_peek(toks, 0)->type == T_LSHIFTASSIGN ||
+        tok_peek(toks, 0)->type == T_RSHIFTASSIGN ||
+        tok_peek(toks, 0)->type == T_BITANDASSIGN ||
+        tok_peek(toks, 0)->type == T_BITORASSIGN ||
+        tok_peek(toks, 0)->type == T_BITXORASSIGN ||
         tok_peek(toks, 0)->type == T_PLUSASSIGN ||
         tok_peek(toks, 0)->type == T_MINUSASSIGN)
     {
@@ -710,6 +736,22 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
                         ? BUILTIN_PLUSASSIGN
                         : t->type == T_MINUSASSIGN
                         ? BUILTIN_MINUSASSIGN
+                        : t->type == T_MULASSIGN
+                        ? BUILTIN_MULASSIGN
+                        : t->type == T_DIVASSIGN
+                        ? BUILTIN_DIVASSIGN
+                        : t->type == T_MODASSIGN
+                        ? BUILTIN_MODASSIGN
+                        : t->type == T_LSHIFTASSIGN
+                        ? BUILTIN_LSHIFTASSIGN
+                        : t->type == T_RSHIFTASSIGN
+                        ? BUILTIN_RSHIFTASSIGN
+                        : t->type == T_BITANDASSIGN
+                        ? BUILTIN_BITANDASSIGN
+                        : t->type == T_BITORASSIGN
+                        ? BUILTIN_BITORASSIGN
+                        : t->type == T_BITXORASSIGN
+                        ? BUILTIN_BITXORASSIGN
                         : (assert(false), 0),
                     .first_arg = args.first_child
                 }
@@ -1155,10 +1197,12 @@ void parse_file(Program *prog, const char *filename) {
     prog->root = parse_module(&toks);
     collect_symbols(prog);
 
+    /*
     printf("%d KiB of input code\n", buf.len/1024);
     printf("%ld KiB in %ld tokens\n", sizeof(Token)*token_vec.len/1024, token_vec.len);
     printf("%ld KiB in %ld AST tree nodes\n", sizeof(AstNode)*_node_alloc.len/1024,
             _node_alloc.len);
+            */
 }
 
 static void _indent(int depth) {

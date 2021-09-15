@@ -323,7 +323,8 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     }
     switch (op) {
         case BUILTIN_ASSIGN:
-            _i("ld [hl], b");
+            _i("ld a, b");
+            _i("ld [hl], a");
             break;
         case BUILTIN_PLUSASSIGN:
             _i("ld a, [hl]");
@@ -335,10 +336,65 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
             _i("sub a, b");
             _i("ld [hl], a");
             break;
+        case BUILTIN_BITANDASSIGN:
+            _i("ld a, [hl]");
+            _i("and a, b");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_BITORASSIGN:
+            _i("ld a, [hl]");
+            _i("or a, b");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_BITXORASSIGN:
+            _i("ld a, [hl]");
+            _i("xor a, b");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_MULASSIGN:
+            _i("ld a, [hl]");
+            _i("push hl");
+            _i("call __mulu8");
+            _i("pop hl");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_DIVASSIGN:
+            _i("ld a, [hl]");
+            _i("push hl");
+            _i("call __divu8");
+            _i("pop hl");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_MODASSIGN:
+            _i("ld a, [hl]");
+            _i("push hl");
+            _i("call __divu8");
+            _i("pop hl");
+            _i("ld a, b");
+            _i("ld [hl], a");
+            break;
+        case BUILTIN_LSHIFTASSIGN:
+        case BUILTIN_RSHIFTASSIGN:
+            {
+                const int start_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                _i("ld c, [hl]");
+                _i("ld a, b");
+                _label(start_label);
+                _i("and a");
+                _i("jr z, .l%d", end_label);
+                _i("dec a");
+                _i("%s c", op == BUILTIN_LSHIFTASSIGN ? "sla" : "srl");
+                _i("jr .l%d", start_label);
+                _label(end_label);
+                _i("ld a, c");
+                _i("ld [hl], a");
+            }
+            break;
         default:
             assert(false);
     }
-    return (Value) { .typeId = U8, .storage = ST_REG_EA };
+    return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
 Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -578,6 +634,13 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
         case BUILTIN_MUL:
             _i("call __mulu8");
             break;
+        case BUILTIN_DIV:
+            _i("call __divu8");
+            break;
+        case BUILTIN_MODULO:
+            _i("call __divu8");
+            _i("ld a, b");
+            break;
         case BUILTIN_NEQ:
         case BUILTIN_EQ:
             {
@@ -705,10 +768,104 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
             _i("sbc a, d");
             _i("ld [hl-], a");
             break;
+        case BUILTIN_BITORASSIGN:
+            _i("ld a, [hl]");
+            _i("or a, e");
+            _i("ld [hl+], a");
+
+            _i("ld a, [hl]");
+            _i("or a, d");
+            _i("ld [hl-], a");
+            break;
+        case BUILTIN_BITANDASSIGN:
+            _i("ld a, [hl]");
+            _i("and a, e");
+            _i("ld [hl+], a");
+
+            _i("ld a, [hl]");
+            _i("and a, d");
+            _i("ld [hl-], a");
+            break;
+        case BUILTIN_BITXORASSIGN:
+            _i("ld a, [hl]");
+            _i("xor a, e");
+            _i("ld [hl+], a");
+
+            _i("ld a, [hl]");
+            _i("xor a, d");
+            _i("ld [hl-], a");
+            break;
+        case BUILTIN_RSHIFTASSIGN:
+        case BUILTIN_LSHIFTASSIGN:
+            {
+                // v2 is actually in `b`, since it's a U8
+                const int start_label = _local_label_seq++;
+                const int end_label = _local_label_seq++;
+                _i("push hl");
+                emit_value_to_register(v1, false);
+                _i("ld a, b");
+                _label(start_label);
+                _i("and a");
+                _i("jr z, .l%d", end_label);
+                _i("dec a");
+                if (op == BUILTIN_LSHIFTASSIGN) {
+                    _i("sla l");
+                    _i("rl h");
+                } else {
+                    _i("srl h");
+                    _i("rr l");
+                }
+                _i("jr .l%d", start_label);
+                _label(end_label);
+                _i("ld b, h");
+                _i("ld a, l");
+                _i("pop hl");
+                _i("ld [hl+], a");
+                _i("ld [hl], b");
+                _i("dec hl");
+            }
+            break;
+        case BUILTIN_MULASSIGN:
+            _i("push hl");
+            emit_value_to_register(v1, false);
+            _i("call __mulu16");
+            _i("ld d, h");
+            _i("ld e, l");
+            _i("pop hl");
+            _i("ld [hl], e");
+            _i("inc hl");
+            _i("ld [hl], d");
+            _i("dec hl");
+            break;
+        case BUILTIN_DIVASSIGN:
+            _i("push hl");
+            emit_value_to_register(v1, false);
+            _i("call __divu16");
+            _i("ld d, h");
+            _i("ld e, l");
+            _i("pop hl");
+            _i("ld [hl], e");
+            _i("inc hl");
+            _i("ld [hl], d");
+            _i("dec hl");
+            break;
+        case BUILTIN_MODASSIGN:
+            _i("push hl");
+            emit_value_to_register(v1, false);
+            _i("call __divu16");
+            _i("pop hl");
+            _i("ld [hl], e");
+            _i("inc hl");
+            _i("ld [hl], d");
+            _i("dec hl");
+            break;
         default:
             assert(false);
     }
-    return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
+    // load [hl] to hl, since assignments can be used as values
+    // XXX this is inefficient if we aren't using the value
+    v1 = emit_value_to_register(v1, false);
+    return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
 Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -835,6 +992,14 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
         case BUILTIN_MUL:
             _i("call __mulu16");
             break;
+        case BUILTIN_DIV:
+            _i("call __divu16");
+            break;
+        case BUILTIN_MODULO:
+            _i("call __divu16");
+            _i("ld h, d");
+            _i("ld l, e");
+            break;
         case BUILTIN_NEQ:
         case BUILTIN_EQ:
             {
@@ -931,12 +1096,22 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_GTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_LTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_DIV, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
+    { BUILTIN_MODULO, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
     { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_MULASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_DIVASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_MODASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_BITANDASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_BITORASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
+    { BUILTIN_BITXORASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
@@ -953,12 +1128,22 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_GTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_LTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_DIV, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_MODULO, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, emit_assign_u16 },
+    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, emit_assign_u16 },
+    { BUILTIN_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, emit_array_indexing_u16 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
@@ -1212,7 +1397,6 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                 assert(l != NULL);
                 const int stack_correction = frame.stack_offset - l->stack_offset;
                 if (stack_correction) {
-                    printf("STACK CORRECT %d\n", stack_correction);
                     _i("add sp, %d", stack_correction);
                 }
                 if (n->expr.goto_.is_continue) {
