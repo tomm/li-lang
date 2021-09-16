@@ -84,13 +84,11 @@ fn enable_vblank() {
     ");
 }
 
-const msg_hi = "LI TEST SUITE\n\n";
-
 fn main() {
     passes = fails = total = 0;
 
     console_init();
-    puts(&msg_hi[0]);
+    puts("LI TEST SUITE\n\n" as &u8);
 
     // enable vblank interrupt (for timing)
     elapsed_vblanks = 0u16;
@@ -457,21 +455,17 @@ fn test_ptr() {
     expect(a[2] == 5);
 }
 
-const msg_good = "ALL PASSED";
-const msg_tests = "TOTAL TESTS $";
-const msg_fails = "FAILED TESTS $";
-
 /* Show passed tests in reg 'b', failed tests in 'c', total in 'd',
  * elapsed time in 60ths of a second in `hl` */
 fn output_results() {
-    puts(&msg_tests[0]);
+    puts("TOTAL TESTS $" as &u8);
     puthex(total as u16);
     putchar(10);
     putchar(10);
     if (fails == 0) {
-        puts(&msg_good[0]);
+        puts("ALL PASSED" as &u8);
     } else {
-        puts(&msg_fails[0]);
+        puts("FAILED TESTS $" as &u8);
         puthex(fails as u16);
     };
 }

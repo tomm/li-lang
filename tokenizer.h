@@ -25,6 +25,7 @@ typedef struct Token {
         T_ASTERISK,
         T_SLASH,
         T_PERCENT,
+        T_DOLLAR,
         T_COMMA,
         T_ASSIGN,
         T_PLUSASSIGN,

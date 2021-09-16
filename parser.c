@@ -382,6 +382,25 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                 }
             });
         }
+
+        // array to pointer cast (&x[0] == x$)
+            /*
+        else if (start_token->type == T_DOLLAR) {
+            NodeIdx child = n;
+            n = alloc_node();
+            set_node(n, &(AstNode) {
+                .type = AST_EXPR,
+                .start_token = start_token,
+                .expr = {
+                    .type = EXPR_CAST,
+                    .cast = {
+                        .arg = child,
+                        .to_type = 0, // filled in during type check
+                    }
+                }
+            });
+        }
+            */
         else {
             return n;
         }

@@ -48,6 +48,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_ASTERISK: return "*";
         case T_SLASH: return "/";
         case T_PERCENT: return "%";
+        case T_DOLLAR: return "$";
         case T_COMMA: return ",";
         case T_BREAK: return "break";
         case T_CONTINUE: return "continue";
@@ -103,6 +104,7 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '^') { EMIT(((Token) { T_ACUTE, line, col, filename })); NEXT(); }
         else if (*pos == '%' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_MODASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '%') { EMIT(((Token) { T_PERCENT, line, col, filename })); NEXT(); }
+        else if (*pos == '$') { EMIT(((Token) { T_DOLLAR, line, col, filename })); NEXT(); }
         else if (*pos == '!' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_NEQ, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '!') { EMIT(((Token) { T_EXCLAMATION, line, col, filename })); NEXT(); }
         else if (*pos == '=' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_EQ, line, col, filename })); NEXT(); NEXT(); }

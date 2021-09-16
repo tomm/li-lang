@@ -1,19 +1,9 @@
 include "li-code/softmath.li"; // needed for integer multiply
 include "li-code/gb_console.li";
 
-const msg_hi = "LI BENCHMARK\n\n";
-const msg_rand =     "16-BIT RAND $";
-const msg_u16arith = "U16 ARITH   $";
-const msg_u8arith =  "U8 ARITH    $";
-const msg_logic_ops ="LOGIC OPS   $";
-const msg_array_ops ="ARRAYS      $";
-const msg_softmath = "SOFTMULDIV  $";
-const msg_fail = "ERROR";
-const msg_done = "DONE";
-
 fn main() {
     console_init();
-    puts(&msg_hi[0]);
+    puts("LI BENCHMARK\n\n" as &u8);
 
     elapsed_vblanks = 0u16;
     randSeed = 0u16;
@@ -29,7 +19,7 @@ fn main() {
             benchmark_softmath(0xfedc, 0x1234);
         };
         elapsed = elapsed_vblanks - elapsed;
-        puts(&msg_softmath[0]);
+        puts("SOFTMULDIV  $" as &u8);
         puthex(0x6900 / elapsed);
     };
     putchar(10); // XXX want '\n'
@@ -42,7 +32,7 @@ fn main() {
             benchmark_u8_arith(i as u8);
         };
         elapsed = elapsed_vblanks - elapsed;
-        puts(&msg_u8arith[0]);
+        puts("U8 ARITH    $" as &u8);
         puthex(0x6c00 / elapsed);
     };
     putchar(10); // XXX want '\n'
@@ -55,7 +45,7 @@ fn main() {
             benchmark_u16_arith(i);
         };
         elapsed = elapsed_vblanks - elapsed;
-        puts(&msg_u16arith[0]);
+        puts("U16 ARITH   $" as &u8);
         puthex(0x7f00 / elapsed);
     };
     putchar(10); // XXX want '\n'
@@ -68,7 +58,7 @@ fn main() {
             benchmark_logic_ops(i as u8, !(i as u8));
         };
         elapsed = elapsed_vblanks - elapsed;
-        puts(&msg_logic_ops[0]);
+        puts("LOGIC OPS   $" as &u8);
         puthex(0x6400 / elapsed);
     };
     putchar(10);
@@ -83,7 +73,7 @@ fn main() {
             benchmark_array_ops(&a, &b);
         };
         elapsed = elapsed_vblanks - elapsed;
-        puts(&msg_array_ops[0]);
+        puts("ARRAYS      $" as &u8);
         puthex(0x7f00 / elapsed);
     };
     putchar(10); // XXX want '\n'
@@ -100,15 +90,15 @@ fn main() {
         };
         elapsed = elapsed_vblanks - elapsed;
 
-        puts(&msg_rand[0]);
+        puts("16-BIT RAND $" as &u8);
         if rand() == 0x75 {
             puthex(0x6500 / elapsed);
         } else {
-            puts(&msg_fail[0]);
+            puts("ERROR" as &u8);
         }
     };
     putchar(10);
-    puts(&msg_done[0]);
+    puts("DONE" as &u8);
 }
 
 fn benchmark_softmath(a: u16, b: u16) -> u16 {

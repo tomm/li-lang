@@ -88,12 +88,14 @@ typedef struct Value {
     } storage;
 } Value;
 
-typedef struct RamVariable {
+typedef struct GlobalVariable {
     Str symbol_name;
     int size_bytes;
-} RamVariable;
+    bool is_const; /* consts go in ROM */
+    NodeIdx value;
+} GlobalVariable;
 
-static Vec /*<RamVariable>*/ _ram_vars;
+static Vec /*<GlobalVariable>*/ _global_vars;
 
 
 typedef struct NodeIdxJumpLabel {
@@ -1222,6 +1224,11 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
         // fine. nothing to do
     } else if (to_type == U16 && get_type(v1.typeId)->type == TT_PTR) {
         // fine. nothing to do
+    } else if (get_type(v1.typeId)->type == TT_ARRAY &&
+               get_type(to_type)->type == TT_PTR &&
+               is_type_eq(get_type(v1.typeId)->array.contained,
+                          get_type(to_type)->ptr.ref)) {
+        // fine. nothing to do
     } else {
         assert(false);
     }
@@ -1436,6 +1443,17 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                     v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
                     break;
                 case LIT_STR:
+                    {
+                        vec_push(&_global_vars, &(GlobalVariable) {
+                            .size_bytes = get_type(n->expr.eval_type)->size,
+                            .symbol_name = { .s = 0 },
+                            .is_const = true,
+                            .value = expr
+                        });
+                        _i("ld hl, __L%d", expr);
+                    }
+                    v = (Value) { .typeId = n->expr.eval_type, .storage = ST_REG_EA };
+                    break;
                 case LIT_ARRAY:
                     assert(false);
                     break;
@@ -1461,13 +1479,15 @@ static void record_def_var(NodeIdx def_var) {
     assert(var_node->type == AST_DEF_VAR);
     TypeId t = var_node->var_def.type;
 
-    if (var_node->var_def.value != 0) {
+    if (!var_node->var_def.is_const && var_node->var_def.value) {
         fatal_error(var_node->start_token, "LR35902 backend does not support initialization of RAM globals");
     }
     
-    vec_push(&_ram_vars, &(RamVariable) {
+    vec_push(&_global_vars, &(GlobalVariable) {
         .size_bytes = get_type(t)->size,
-        .symbol_name = var_node->var_def.name
+        .symbol_name = var_node->var_def.name,
+        .is_const = var_node->var_def.is_const,
+        .value = var_node->var_def.value
     });
 }
 
@@ -1617,26 +1637,34 @@ static void _emit_const(NodeIdx node) {
     }
 }
 
-static void emit_const(NodeIdx node) {
-    AstNode *n = get_node(node);
-    assert(n->type == AST_DEF_VAR && n->var_def.is_const);
-
-    __("%.*s:", n->var_def.name.len, n->var_def.name.s);
-    _emit_const(n->var_def.value);
+static void emit_rom_globals() {
+    for (int i=0; i<_global_vars.len; ++i) {
+        GlobalVariable v = *(GlobalVariable*) vec_get(&_global_vars, i);
+        if (v.is_const) {
+            if (v.symbol_name.s) {
+                __("%.*s:", v.symbol_name.len, v.symbol_name.s);
+            } else {
+                __("__L%d:", v.value /* is NodeIdx */);
+            }
+            _emit_const(v.value);
+        }
+    }
 }
-
 static void emit_ram_globals() {
     __("\nSECTION \"workram\", WRAM0");
     
-    for (int i=0; i<_ram_vars.len; ++i) {
-        RamVariable v = *(RamVariable*) vec_get(&_ram_vars, i);
-        _i("%.*s: ds %d", v.symbol_name.len, v.symbol_name.s, v.size_bytes);
+    for (int i=0; i<_global_vars.len; ++i) {
+        GlobalVariable v = *(GlobalVariable*) vec_get(&_global_vars, i);
+        if (!v.is_const) {
+            __("%.*s:", v.symbol_name.len, v.symbol_name.s);
+            _i("ds %d", v.size_bytes);
+        }
     }
 }
 
 static void init() {
     _stack_vars = vec_init(sizeof(StackVar));
-    _ram_vars = vec_init(sizeof(RamVariable));
+    _global_vars = vec_init(sizeof(GlobalVariable));
     _jump_labels = vec_init(sizeof(NodeIdxJumpLabel));
 }
 
@@ -1660,11 +1688,7 @@ void output_lr35902(Program *prog) {
             }
         }
         else if (n->type == AST_DEF_VAR) {
-            if (n->var_def.is_const) {
-                emit_const(node);
-            } else {
-                record_def_var(node);
-            }
+            record_def_var(node);
         }
         else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
             fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);
@@ -1674,6 +1698,7 @@ void output_lr35902(Program *prog) {
     }
 
     // actually need to emit asm for global variables
+    emit_rom_globals();
     emit_ram_globals();
 
     fclose(output);

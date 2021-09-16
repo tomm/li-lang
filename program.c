@@ -244,6 +244,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                     (get_type(from_type)->type == TT_PTR && get_type(t)->type == TT_PTR)
                 ) {
                     // fine
+                } else if (get_type(from_type)->type == TT_ARRAY &&
+                           get_type(t)->type == TT_PTR &&
+                           is_type_eq(get_type(from_type)->array.contained,
+                                      get_type(t)->ptr.ref)) {
+                    // fine
                 } else {
                     fatal_error(n->start_token, "Invalid type cast (from %.*s to %.*s)",
                             (int)get_type(from_type)->name.len,
