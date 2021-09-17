@@ -60,6 +60,7 @@ typedef struct Token {
         T_LITERAL_STR,
         T_LITERAL_U8,
         T_LITERAL_U16,
+        T_LITERAL_ANY_INT,
         T_RARROW,
         T_WHILE,
         T_EOF

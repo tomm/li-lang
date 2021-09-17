@@ -6,17 +6,17 @@ fn test_u8_arith(a: u8, b: u8) -> u8 {
 }
 
 fn test_u16_arith(a: u16, b: u16, c: u16, d: u8) -> u16 {
-  a + b + c - 0x10f0u16 & 0x33cc | 0xf00f ^ d as u16
+  a + b + c - 0x10f0 & 0x33cc | 0xf00f ^ d as u16
 }
 fn test_cast_u16(a: u8) -> u16 { a as u16 }
 
 fn test_cast_u8(a: u16) -> u8 { a as u8 }
 
 fn test_var_globals() -> void {
-    test_u16 = 10u16;
+    test_u16 = 10;
     test_u16 = test_u16 + test_u16;
-    test_u16 = test_u16 + 1u16;
-    expect(test_u16 == 21u16);
+    test_u16 += 1;
+    expect(test_u16 == 21);
 
     // arrays
     test_arr_u8[0] = 3;
@@ -24,8 +24,8 @@ fn test_var_globals() -> void {
     test_arr_u8[2] = test_arr_u8[1] + test_arr_u8[0];
     test_arr_u8[3] = test_arr_u8[2] + test_arr_u8[1];
     test_arr_2d_u16[0][0] = 0x1234;
-    test_arr_2d_u16[0][1] = test_arr_2d_u16[0][0] - 1u16;
-    test_arr_2d_u16[1][0] = test_arr_2d_u16[0][1] * 2u16;
+    test_arr_2d_u16[0][1] = test_arr_2d_u16[0][0] - 1;
+    test_arr_2d_u16[1][0] = test_arr_2d_u16[0][1] * 2;
     test_arr_2d_u16[1][1] = test_arr_2d_u16[1][0] + test_arr_2d_u16[0][0];
     expect(test_arr_u8[0] == 3);
     expect(test_arr_u8[1] == 6);
@@ -106,8 +106,8 @@ fn main() {
     // forward/extern declarations
     expect(test_fwd_decl(2) == 3);
     // if expression
-    expect((if 1 {0xcafe} else {0xdead}) == 0xcafe);
-    expect((if 0 {0xcafe} else {0xdead}) == 0xdead);
+    expect((if 1 {0xcafeu16} else {0xdeadu16}) == 0xcafe);
+    expect((if 0 {0xcafeu16} else {0xdeadu16}) == 0xdead);
     // == operator
     expect(eq_u8(4,4));
     expect(!eq_u8(5,6));
@@ -171,7 +171,7 @@ fn main() {
     expect(log_not(0));
     // bitwise
     expect(bitnot_u8(0xc0) == 0x3f);
-    expect(bitnot_u16(0xfc0fu16) == 0x3f0u16);
+    expect(bitnot_u16(0xfc0f) == 0x3f0);
     expect(bitand_u8(0x3c,0xf0) == 0x30);
     expect(bitor_u8(0x3c,0xf0) == 0xfc);
     expect(bitxor_u8(0x3c,0xf0) == 0xcc);
@@ -186,31 +186,31 @@ fn main() {
     // multiply
     expect(mul_u8(5,5) == 25);
     expect(mul_u8(255,255) == 1);
-    expect(mul_u16(255u16,255u16) == 0xfe01);
-    expect(mul_u16(123u16,100u16) == 12300);
+    expect(mul_u16(255,255) == 0xfe01);
+    expect(mul_u16(123,100) == 12300);
     // divide
     expect(div_u8(23,0) == 255); // saturation on zero divide :)
     expect(div_u8(133,200) == 0); // divisor > dividend
     expect(div_u8(255,7) == 36);
     expect(div_u8(5,5) == 1);
     expect(div_u8(10,5) == 2);
-    expect(div_u16(65535, 1u16) == 65535);
-    expect(div_u16(65535, 2u16) == 32767);
-    expect(div_u16(50845, 8969) == 5u16);
-    expect(div_u16(1234, 0u16) == 65535);
-    expect(div_u16(1234, 2000) == 0u16);
-    expect(div_u16(44132, 127u16) == 347);
+    expect(div_u16(65535, 1) == 65535);
+    expect(div_u16(65535, 2) == 32767);
+    expect(div_u16(50845, 8969) == 5);
+    expect(div_u16(1234, 0) == 65535);
+    expect(div_u16(1234, 2000) == 0);
+    expect(div_u16(44132, 127) == 347);
     // modulo
     expect(mod_u8(23,0) == 0);
     expect(mod_u8(133,200) == 133); // divisor > dividend
     expect(mod_u8(255,7) == 3);
     expect(mod_u8(5,5) == 0);
-    expect(mod_u16(65535, 1u16) == 0u16);
-    expect(mod_u16(65535, 2u16) == 1u16);
+    expect(mod_u16(65535, 1) == 0);
+    expect(mod_u16(65535, 2) == 1);
     expect(mod_u16(50845, 8969) == 6000);
-    expect(mod_u16(1234, 0u16) == 0u16);
+    expect(mod_u16(1234, 0) == 0);
     expect(mod_u16(1234, 2000) == 1234);
-    expect(mod_u16(44132, 127u16) == 63u16);
+    expect(mod_u16(44132, 127) == 63);
     // shifts
     expect(shl_u8(6, 0) == 6);
     expect(shl_u8(6, 3) == 48);
@@ -223,7 +223,7 @@ fn main() {
 
     // test u8 op-assigns
     (
-        var x = 1;
+        var x = 1u8;
         expect((x += 5) == 6);
         expect(x == 6);
 
@@ -258,11 +258,11 @@ fn main() {
     // test u8 op-assigns
     (
         var x = 1234u16;
-        expect((x += 2345u16) == 3579u16);
-        expect(x == 3579u16);
+        expect((x += 2345) == 3579);
+        expect(x == 3579);
 
-        expect((x -= 2345u16) == 1234u16);
-        expect(x == 1234u16);
+        expect((x -= 2345) == 1234);
+        expect(x == 1234);
 
         expect((x |= 0x8181) == 0x85d3);
         expect(x == 0x85d3);
@@ -270,8 +270,8 @@ fn main() {
         expect((x &= 0xf0f0) == 0x80d0);
         expect(x == 0x80d0);
 
-        expect((x ^= 0x8001) == 0xd1u16);
-        expect(x == 0xd1u16);
+        expect((x ^= 0x8001) == 0xd1);
+        expect(x == 0xd1);
 
         expect((x <<= 4) == 0xd10);
         expect(x == 0xd10);
@@ -279,14 +279,14 @@ fn main() {
         expect((x >>= 2) == 0x344);
         expect(x == 0x344);
 
-        expect((x *= 3u16) == 0x9cc);
+        expect((x *= 3) == 0x9cc);
         expect(x == 0x9cc);
 
-        expect((x /= 5u16) == 0x1f5);
+        expect((x /= 5) == 0x1f5);
         expect(x == 0x1f5);
 
-        expect((x %= 0xc3u16) == 0x6fu16);
-        expect(x == 0x6fu16);
+        expect((x %= 0xc3) == 0x6f);
+        expect(x == 0x6f);
     );
 
     test_u16_assigns();
@@ -338,33 +338,33 @@ fn mul_u8(a: u8, b: u8) -> u8 { a * b }
 fn mul_u16(a: u16, b: u16) -> u16 { a * b }
 fn shl_u8(a: u8, b: u8) -> u8 { a << b }
 fn shr_u8(a: u8, b: u8) -> u8 { a >> b }
-fn shl_u16(a: u16, b: u8) -> u16 { a << b }
-fn shr_u16(a: u16, b: u8) -> u16 { a >> b }
+fn shl_u16(a: u16, b: u16) -> u16 { a << b }
+fn shr_u16(a: u16, b: u16) -> u16 { a >> b }
 
 // can tell type, or infer from literal
 const myconst_a: [u8; 12] = "Hello world";
 const myconst_b = 2u16;
-const myconst_c = [[1,2,4,8],[2,3,4,9]];
+const myconst_c = [[1u8,2u8,4u8,8u8],[2u8,3u8,4u8,9u8]];
 
 fn test_const_globals() {
     expect(myconst_a[0] == 'H');
     expect(myconst_a[1] == 'e');
-    expect(myconst_b == 2u16);
+    expect(myconst_b == 2);
     expect(myconst_c[0][0] == 1);
     expect(myconst_c[1][1] == 3);
 }
 
 fn test_u16_assigns() {
-    var a: u16 = 3u16;
-    expect(a == 3u16);
-    a = 5u16;
-    expect(a == 5u16);
-    a += 4u16;
-    expect(a == 9u16);
+    var a: u16 = 3;
+    expect(a == 3);
+    a = 5;
+    expect(a == 5);
+    a += 4;
+    expect(a == 9);
 
-    var b = a -= 2u16;
+    var b = a -= 2;
     expect(a == b);
-    expect(b == 7u16);
+    expect(b == 7);
 }
 
 fn test_u8_assigns() {
@@ -393,33 +393,33 @@ test_fwd_decl:
 fn test_ptr_cast() {
     var x: u16 = 0xcafe;
     expect(*(&x as &u8) == 0xfe);
-    expect(*((&x as &u8) + 1u16) == 0xca);
+    expect(*((&x as &u8) + 1) == 0xca);
 }
 
 fn test_ptr_arith() {
     var a: [u16; 4];
     var p: &u16;
     p = &a[0];
-    *p = 1u16;
-    p += 1u16;
-    *p = 2u16;
-    p = p + 2u16;
-    *p = 4u16;
+    *p = 1;
+    p += 1;
+    *p = 2;
+    p = p + 2;
+    *p = 4;
 
-    p -= 1u16;
-    *p = 99u16;
+    p -= 1;
+    *p = 99;
 
-    p = p - 2u16;
-    expect(*p == 1u16);
+    p = p - 2;
+    expect(*p == 1);
 
-    expect(a[0] == 1u16);
-    expect(a[1] == 2u16);
-    expect(a[2] == 99u16);
-    expect(a[3] == 4u16);
+    expect(a[0] == 1);
+    expect(a[1] == 2);
+    expect(a[2] == 99);
+    expect(a[3] == 4);
 }
 
 fn test_ptr_arg(a: &u16) {
-    *a = *a * 2u16;
+    *a = *a * 2;
 }
 
 fn test_ptr_array(a: &[u8; 3]) {
@@ -444,9 +444,9 @@ fn test_ptr() {
     expect(x == 41);
     expect(y == 51);
 
-    var z: u16 = 50u16;
+    var z: u16 = 50;
     test_ptr_arg(&z);
-    expect(z == 100u16);
+    expect(z == 100);
 
     var a: [u8; 3];
     test_ptr_array(&a);
@@ -475,7 +475,7 @@ fn local_scope_argpass(a: u8) -> u8 {
 }
 
 fn test_local_scope(a: u8) -> u8 {
-    var l1 = 10;
+    var l1 = 10u8;
     var l2: u8;
     var l3: [u16; 2];
 
@@ -486,19 +486,19 @@ fn test_local_scope(a: u8) -> u8 {
     l1 = 4;
     l2 = 1;
     l3[0] = (l1 + l2) as u16;
-    l3[l2] = l3[0] + 1u16;
+    l3[l2] = l3[0] + 1;
 
     expect(l1 == 4);
     expect(l2 == 1);
-    expect(l3[0] == 5u16);
-    expect(l3[l2] == 6u16);
+    expect(l3[0] == 5);
+    expect(l3[l2] == 6);
     expect(local_scope_argpass(l1) == 4);
 
     l3[1] as u8
 }
 
 fn test_while() {
-    var i = 0;
+    var i: u8 = 0;
     var arr: [u8; 5];
 
     while i != 5 {
@@ -515,7 +515,7 @@ fn test_while() {
 }
 
 fn test_while_break() {
-    var i = 0;
+    var i: u8 = 0;
     var arr: [u8; 5];
 
     while i < 5 {

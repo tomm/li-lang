@@ -5,8 +5,8 @@ fn main() {
     console_init();
     puts("LI BENCHMARK\n\n" as &u8);
 
-    elapsed_vblanks = 0u16;
-    randSeed = 0u16;
+    elapsed_vblanks = 0;
+    randSeed = 0;
 
     enable_vblank();
 
@@ -15,7 +15,7 @@ fn main() {
         var i = 0u16;
         var elapsed = elapsed_vblanks;
         while i < 2000 {
-            i += 1u16;
+            i += 1;
             benchmark_softmath(0xfedc, 0x1234);
         };
         elapsed = elapsed_vblanks - elapsed;
@@ -28,7 +28,7 @@ fn main() {
         var i = 0u16;
         var elapsed = elapsed_vblanks;
         while i < 10000 {
-            i += 1u16;
+            i += 1;
             benchmark_u8_arith(i as u8);
         };
         elapsed = elapsed_vblanks - elapsed;
@@ -41,7 +41,7 @@ fn main() {
         var i = 0u16;
         var elapsed = elapsed_vblanks;
         while i < 10000 {
-            i += 1u16;
+            i += 1;
             benchmark_u16_arith(i);
         };
         elapsed = elapsed_vblanks - elapsed;
@@ -54,7 +54,7 @@ fn main() {
         var i = 0u16;
         var elapsed = elapsed_vblanks;
         while i < 10000 {
-            i += 1u16;
+            i += 1;
             benchmark_logic_ops(i as u8, !(i as u8));
         };
         elapsed = elapsed_vblanks - elapsed;
@@ -69,7 +69,7 @@ fn main() {
         var a: [[u8; 3]; 3];
         var b: [[u8; 3]; 3];
         while i < 500 {
-            i += 1u16;
+            i += 1;
             benchmark_array_ops(&a, &b);
         };
         elapsed = elapsed_vblanks - elapsed;
@@ -85,7 +85,7 @@ fn main() {
         var i = 0u16;
         var elapsed = elapsed_vblanks;
         while i < 5000 {
-            i += 1u16;
+            i += 1;
             rand();
         };
         elapsed = elapsed_vblanks - elapsed;

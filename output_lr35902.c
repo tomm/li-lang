@@ -800,12 +800,12 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
         case BUILTIN_RSHIFTASSIGN:
         case BUILTIN_LSHIFTASSIGN:
             {
-                // v2 is actually in `b`, since it's a U8
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
                 _i("push hl");
                 emit_value_to_register(v1, false);
-                _i("ld a, b");
+                // ignore high byte of shift value
+                _i("ld a, e");
                 _label(start_label);
                 _i("and a");
                 _i("jr z, .l%d", end_label);
@@ -933,10 +933,10 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
         case BUILTIN_SHIFT_RIGHT:
         case BUILTIN_SHIFT_LEFT:
             {
-                // v2 is actually in `b`, since it's a U8
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
-                _i("ld a, b");
+                // ignore high byte of shift value
+                _i("ld a, e");
                 _label(start_label);
                 _i("and a");
                 _i("jr z, .l%d", end_label);
@@ -1119,8 +1119,8 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
 
-    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U8, emit_binop_u16 },
-    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U8, emit_binop_u16 },
+    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
+    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
@@ -1141,8 +1141,8 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, emit_assign_u16 },
-    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, emit_assign_u16 },
+    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
+    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
     { BUILTIN_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
@@ -1430,6 +1430,9 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_identifier(expr, frame);
         case EXPR_LITERAL:
             switch (n->expr.literal.type) {
+                case LIT_INT_ANY:
+                    // should not reach backend
+                    assert(false);
                 case LIT_U8:
                     _i("ld a, $%x", n->expr.literal.literal_int);
                     v = (Value) { .typeId = U8, .storage = ST_REG_VAL };

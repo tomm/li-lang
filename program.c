@@ -58,7 +58,7 @@ static JumpLabel *label_lookup(Scope *scope, Str *name) {
     return NULL;
 }
 
-static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr);
+static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, enum TypeType typekind_hint);
 
 typedef struct ValidBuiltin {
     enum BuiltinOp op;
@@ -110,8 +110,8 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
     { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
 
-    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U8, U16 },
-    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U8, U16 },
+    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, U8 },
@@ -131,8 +131,8 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, U16 },
-    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U8, U16 },
+    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
@@ -144,7 +144,43 @@ static const ValidBuiltin valid_builtins[] = {
     { -1 }
 };
 
-static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
+/*
+static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, enum TypeType typekind_hint) {
+    AstNode *n = get_node(expr);
+    enum BuiltinOp op = n->expr.builtin.op;
+    assert(op == BUILTIN_UNARY_NEG);
+
+    NodeIdx arg = n->expr.builtin.first_arg;
+    AstNode *a = get_node(arg);
+    if (a->expr.type == EXPR_LITERAL &&
+        (a->expr.literal.type == LIT_INT_ANY ||
+         a->expr.literal.type == LIT_U8 ||
+         a->expr.literal.type == LIT_U16)) {
+        // turn BUILTIN_UNARY_NEG node into the literal node directly
+        NodeIdx next_sibling = n->next_sibling;
+        *n = *a;
+        n->next_sibling = next_sibling;
+        n->expr.literal.literal_int = -n->expr.literal.literal_int;
+        typecheck_expr(prog, scope, expr, typekind_hint);
+        return true;
+    } else {
+        return false;
+    }
+}
+*/
+
+/* Pass -1 for TypeType to find any */
+static const struct ValidBuiltin *find_first_matching_builtin(enum BuiltinOp op, enum TypeType t1, enum TypeType t2) {
+    for (int i=0; valid_builtins[i].op != -1; ++i) {
+        const struct ValidBuiltin *v = &valid_builtins[i];
+        if (v->op == op && (v->arg1 == t1 || t1 == -1) && (v->arg2 == t2 || t2 == -1)) {
+            return v;
+        }
+    }
+    return NULL;
+}
+
+static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, enum TypeType typekind_hint) {
     AstNode *n = get_node(expr);
     enum BuiltinOp op = n->expr.builtin.op;
 
@@ -154,11 +190,43 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
     NodeIdx arg1 = n->expr.builtin.first_arg;
     NodeIdx arg2 = get_node(arg1)->next_sibling;
 
-    TypeId t1 = typecheck_expr(prog, scope, arg1);
-    TypeId t2 = num_args == 2 ? typecheck_expr(prog, scope, arg2) : VOID;
+    /*
+    if (op == BUILTIN_UNARY_NEG) {
+        if (try_fold_unary_neg(prog, scope, expr, typekind_hint)) {
+            return get_node(expr)->expr.eval_type;
+        }
+    }
+    */
 
-    enum TypeType tt1 = get_type(t1)->type;
-    enum TypeType tt2 = t2 ? get_type(t2)->type : TT_PRIM_VOID;
+    // All this hideous TT_UNKNOWN/TYPE_UNKNOWN stuff is due to size
+    // inference of unsized integer literals...
+    TypeId t1, t2;
+    enum TypeType tt1, tt2;
+
+    t1 = typecheck_expr(prog, scope, arg1, TT_UNKNOWN);
+
+    // special type hint for assignment operator
+    enum TypeType hint = op == BUILTIN_ASSIGN ? get_type(t1)->type : TT_UNKNOWN;
+    t2 = num_args == 2 ? typecheck_expr(prog, scope, arg2, hint) : VOID;
+
+    tt1 = get_type(t1)->type;
+    tt2 = t2 ? get_type(t2)->type : TT_PRIM_VOID;
+
+    if (t1 == TYPE_UNKNOWN) {
+        const struct ValidBuiltin *b = find_first_matching_builtin(op, -1, tt2);
+        if (b) {
+            // try typechecking again with a smarter typekind hint
+            t1 = typecheck_expr(prog, scope, arg1, b->arg1);
+            tt1 = get_type(t1)->type;
+        }
+    }
+    if (t2 == TYPE_UNKNOWN) {
+        const struct ValidBuiltin *b = find_first_matching_builtin(op, tt1, -1);
+        enum TypeType hint = b ? b->arg2 : tt1;
+        // try typechecking again with a smarter typekind hint
+        t2 = typecheck_expr(prog, scope, arg2, hint);
+        tt2 = get_type(t2)->type;
+    }
 
     // do the argument types match a valid builtin?
     for (int i=0; valid_builtins[i].op != -1; ++i) {
@@ -198,7 +266,7 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr) {
         }
     }
 error:
-    fatal_error(n->start_token, "invalid arguments to operator %s: '%.*s' and '%.*s'",
+    fatal_error(n->start_token, "invalid arguments to operator '%s': '%.*s' and '%.*s'",
             builtin_name(op),
             (int)get_type(t1)->name.len,
             get_type(t1)->name.s,
@@ -209,7 +277,7 @@ error:
 
 // XXX also resolves gotos. why do we do both? because AST isn't simple
 // to traverse...
-static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
+static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, enum TypeType typekind_hint) {
     AstNode *n = get_node(expr);
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
@@ -232,8 +300,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_CAST:
             {
-                TypeId from_type = typecheck_expr(prog, scope, n->expr.cast.arg);
                 t = n->expr.cast.to_type;
+                enum TypeType hint = get_type(t)->type == TT_PTR ? TT_PRIM_U16 : TT_UNKNOWN;
+                TypeId from_type = typecheck_expr(prog, scope, n->expr.cast.arg, hint);
 
                 // valid casts in li
                 if (is_type_eq(from_type, t) ||
@@ -262,7 +331,8 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             {
                 t = VOID;
                 for (NodeIdx e=n->expr.list.first_child; e != 0; e=get_node(e)->next_sibling) {
-                    t = typecheck_expr(prog, scope, e);
+                    bool is_last = get_node(e)->next_sibling == 0;
+                    t = typecheck_expr(prog, scope, e, is_last ? typekind_hint : TT_UNKNOWN);
                 }
             }
             break;
@@ -284,6 +354,18 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_LITERAL:
             switch (n->expr.literal.type) {
+                case LIT_INT_ANY:
+                    if (typekind_hint == TT_PRIM_U8) {
+                        t = U8;
+                        n->expr.literal.type = LIT_U8;
+                    }
+                    else if (typekind_hint == TT_PRIM_U16) {
+                        t = U16;
+                        n->expr.literal.type = LIT_U16;
+                    } else {
+                        t = TYPE_UNKNOWN;
+                    }
+                    break;
                 case LIT_U8:
                     t = U8;
                     break;
@@ -303,12 +385,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                         if (item == 0) {
                             fatal_error(n->start_token, "Zero length array literal not permitted");
                         }
-                        t = typecheck_expr(prog, scope, item);
+                        t = typecheck_expr(prog, scope, item, TT_UNKNOWN);
                         int len = 1;
                         while (get_node(item)->next_sibling != 0) {
                             len++;
                             item = get_node(item)->next_sibling;
-                            if (!is_type_eq(t, typecheck_expr(prog, scope, item))) {
+                            if (!is_type_eq(t, typecheck_expr(prog, scope, item, TT_UNKNOWN))) {
                                 fatal_error(get_node(item)->start_token, "Unmatched array item type");
                             }
                         }
@@ -322,7 +404,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                 // is it a built-in op?
                 AstNode *callee = get_node(n->expr.call.callee);
                 if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-                    typecheck_expr(prog, scope, n->expr.call.callee);
+                    typecheck_expr(prog, scope, n->expr.call.callee, TT_UNKNOWN);
                     Symbol *fn_sym = lookup_program_symbol(prog, callee->expr.ident);
 
                     if (fn_sym == NULL) {
@@ -347,8 +429,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
 
                     for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
                         TypeId expected_type = *(TypeId*)vec_get(argdef, i);
-                        TypeId passed_type = typecheck_expr(prog, scope, arg);
+                        TypeId passed_type = typecheck_expr(prog, scope, arg, get_type(expected_type)->type);
                         if (!is_type_eq(passed_type, expected_type)) {
+
                             fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
                                     i + 1,
                                     (int)get_type(passed_type)->name.len,
@@ -367,7 +450,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_IF_ELSE:
             {
-                TypeId cond = typecheck_expr(prog, scope, n->expr.if_else.condition);
+                TypeId cond = typecheck_expr(prog, scope, n->expr.if_else.condition, TT_PRIM_U8 /* XXX bool */);
 
                 if (cond != U8 && cond != U16) {
                     fatal_error(n->start_token, "expected U8 or U16 if condition, but found '%.*s'",
@@ -375,10 +458,10 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                             get_type(cond)->name.s);
                 }
 
-                TypeId on_true = typecheck_expr(prog, scope, n->expr.if_else.on_true);
+                TypeId on_true = typecheck_expr(prog, scope, n->expr.if_else.on_true, typekind_hint);
 
                 if (n->expr.if_else.on_false != 0) {
-                    TypeId on_false = typecheck_expr(prog, scope, n->expr.if_else.on_false);
+                    TypeId on_false = typecheck_expr(prog, scope, n->expr.if_else.on_false, typekind_hint);
 
                     if (!is_type_eq(on_false, on_true)) {
                         fatal_error(n->start_token, "if-else expects both branches to evaluate to the same type. found %.*s and %.*s",
@@ -394,7 +477,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
             break;
         case EXPR_WHILE_LOOP:
             {
-                TypeId cond = typecheck_expr(prog, scope, n->expr.while_loop.condition);
+                TypeId cond = typecheck_expr(prog, scope, n->expr.while_loop.condition, TT_PRIM_U8 /* XXX bool */);
 
                 if (cond != U8 && cond != U16) {
                     fatal_error(n->start_token, "expected U8 or U16 while condition, but found '%.*s'",
@@ -405,7 +488,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                     .label = n->expr.while_loop.label,
                     .node = expr
                 });
-                typecheck_expr(prog, scope, n->expr.while_loop.body);
+                typecheck_expr(prog, scope, n->expr.while_loop.body, TT_UNKNOWN);
                 label_pop(scope);
 
                 t = VOID;
@@ -422,19 +505,19 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr) {
                 // infer type of local variable from assignment
                 if (n->expr.local_scope.var_type == TYPE_UNKNOWN &&
                     n->expr.local_scope.value != 0) {
-                    n->expr.local_scope.var_type = typecheck_expr(prog, scope, n->expr.local_scope.value);
+                    n->expr.local_scope.var_type = typecheck_expr(prog, scope, n->expr.local_scope.value, TT_UNKNOWN);
                 }
 
                 scope_push(scope, (Variable) {
                     .name = n->expr.local_scope.var_name,
                     .type = n->expr.local_scope.var_type
                 });
-                t = typecheck_expr(prog, scope, n->expr.local_scope.scoped_expr);
+                t = typecheck_expr(prog, scope, n->expr.local_scope.scoped_expr, TT_UNKNOWN);
                 scope_pop(scope);
             }
             break;
         case EXPR_BUILTIN:
-            t = typecheck_builtin(prog, scope, expr);
+            t = typecheck_builtin(prog, scope, expr, typekind_hint);
             break;
     }
     n->expr.eval_type = t;
@@ -460,8 +543,8 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
         });
     }
 
-    TypeId returned = typecheck_expr(prog, &scope, fn_node->fn.body);
     TypeId expected = get_type(fn_node->fn.type)->func.ret;
+    TypeId returned = typecheck_expr(prog, &scope, fn_node->fn.body, get_type(expected)->type);
 
     if (!is_type_eq(expected, returned)) {
         fatal_error(fn_node->start_token, "function %.*s returned %.*s but should return %.*s",
@@ -502,7 +585,7 @@ static void typecheck_global(Program *prog, NodeIdx node) {
     assert(n->var_def.value != 0);
 
     check_is_literal(prog, n->var_def.value);
-    TypeId v = typecheck_expr(prog, NULL, n->var_def.value);
+    TypeId v = typecheck_expr(prog, NULL, n->var_def.value, TT_UNKNOWN);
 
     if (n->var_def.type == TYPE_UNKNOWN) {
         n->var_def.type = v;

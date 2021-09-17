@@ -57,6 +57,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_LITERAL_STR: return "literal str";
         case T_LITERAL_U8: return "literal u8";
         case T_LITERAL_U16: return "literal u16";
+        case T_LITERAL_ANY_INT: return "literal any int";
         case T_IF: return "if";
         case T_ELSE: return "else";
         case T_RARROW: return "->";
@@ -248,7 +249,7 @@ Vec lex(Str buf, const char *filename) {
                     t.type = T_LITERAL_U16;
                     pos += 3;
                 } else {
-                    t.type = (t.int_literal < -128 || t.int_literal > 255) ? T_LITERAL_U16 : T_LITERAL_U8;
+                    t.type = T_LITERAL_ANY_INT;
                 }
                 EMIT(t);
                 last_tok_was_literal = true;
@@ -272,7 +273,7 @@ Vec lex(Str buf, const char *filename) {
                     t.type = T_LITERAL_U16;
                     pos += 3;
                 } else {
-                    t.type = (t.int_literal < -128 || t.int_literal > 255) ? T_LITERAL_U16 : T_LITERAL_U8;
+                    t.type = T_LITERAL_ANY_INT;
                 }
                 EMIT(t);
                 last_tok_was_literal = true;

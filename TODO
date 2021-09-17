@@ -12,6 +12,7 @@
 * escape chars in strings lead to wrong type length calculation
 * should check for invalid assignment to temporaries in frontend - but only
   backend knows about temporaryness...
+* declaration in if (if (var x = blah) {)
 
 missing operators:
   ++, -- (but maybe not)

@@ -224,6 +224,22 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 });
                 return expr;
             }
+        case T_LITERAL_ANY_INT:
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_INT_ANY,
+                            .literal_int = t->int_literal
+                        }
+                    }
+                });
+                return expr;
+            }
         case T_LSQBRACKET:
             {
                 ChildCursor args = ChildCursor_init();
@@ -366,7 +382,7 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
             chomp(toks, T_LSQBRACKET);
             ChildCursor args = ChildCursor_init();
             ChildCursor_append(&args, n);
-            ChildCursor_append(&args, parse_list_expression(toks, T_RSQBRACKET));
+            ChildCursor_append(&args, parse_expression(toks));
             chomp(toks, T_RSQBRACKET);
 
             n = alloc_node();
@@ -938,7 +954,9 @@ static TypeId parse_type(TokenCursor *toks) {
         TypeId contained = parse_type(toks);
         chomp(toks, T_SEMICOLON);
         const Token *size = tok_next(toks);
-        if (size->type != T_LITERAL_U8 && size->type != T_LITERAL_U16) {
+        if (size->type != T_LITERAL_U8 &&
+            size->type != T_LITERAL_U16 &&
+            size->type != T_LITERAL_ANY_INT) {
             parse_error("Expected array length", T_LITERAL_U16, size);
         }
         chomp(toks, T_RSQBRACKET);
@@ -1287,7 +1305,7 @@ void print_ast(NodeIdx nidx, int depth) {
             break;
         case AST_EXPR:
             _indent(depth+1);
-            printf("(node %d: %.*s) ",
+            printf("(expr node %d: %.*s) ",
                     nidx,
                     (int)get_type(node->expr.eval_type)->name.len,
                     get_type(node->expr.eval_type)->name.s);
@@ -1326,6 +1344,9 @@ void print_ast(NodeIdx nidx, int depth) {
                         case LIT_U16:
                             printf("literal u16 (%d)\n", node->expr.literal.literal_int);
                             break;
+                        case LIT_INT_ANY:
+                            printf("literal any int (%d)\n", node->expr.literal.literal_int);
+                            break;
                         case LIT_STR:
                             printf("literal str (%.*s)\n", (int)node->expr.literal.literal_str.len, node->expr.literal.literal_str.s);
                             break;
@@ -1334,6 +1355,7 @@ void print_ast(NodeIdx nidx, int depth) {
                             break;
                         case LIT_ARRAY:
                             printf("literal array\n");
+                            break;
                     }
                     break;
                 case EXPR_WHILE_LOOP:
@@ -1369,7 +1391,7 @@ void print_ast(NodeIdx nidx, int depth) {
                     }
                     break;
                 case EXPR_BUILTIN:
-                    printf("expr_builtin (op=%d)\n", node->expr.builtin.op);
+                    printf("expr_builtin (%s)\n", builtin_name(node->expr.builtin.op));
                     _indent(depth+2);
                     printf("args\n");
                     for (NodeIdx arg=node->expr.builtin.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {

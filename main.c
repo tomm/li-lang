@@ -24,9 +24,9 @@ int main(int argc, char** argv) {
         // but 'unknown' type expressions in function bodies
         parse_file(&prog, argv[noemit ? 2 : 1]);
 
+        //print_ast(prog.root, 0);
         // typecheck function bodies
         typecheck_program(&prog);
-
         //print_ast(prog.root, 0);
         
         if (!noemit) {
