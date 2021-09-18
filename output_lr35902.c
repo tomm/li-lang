@@ -73,6 +73,17 @@ static void emit_boilerplate() {
     __("        halt");
     __("        nop");
     __("        jr .loop");
+
+    __("__memcpy:");
+    __("        ; fn (hl: dest, de: src, bc: length)");
+    __("        ld a, [de]");
+    __("        ld [hl+], a");
+    __("        inc de");
+    __("        dec bc");
+    __("        ld a, b");
+    __("        or c");
+    __("        jr nz, __memcpy");
+    __("        ret");
 }
 
 /*         ST_REG_EA ST_REG_VAL ST_REG_VAL_AUX
@@ -214,10 +225,51 @@ static Value emit_value_to_register(Value v, bool to_aux_reg) {
         }
     }
 
+    else if (get_type(v.typeId)->type == TT_ARRAY) {
+        assert(v.storage == ST_REG_EA);
+        return v;
+    }
+
     assert(false);
 }
 
-static void emit_push(AstNode *n, Value v, StackFrame *frame) {
+static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
+    const Type *t = get_type(v.typeId);
+
+    switch (t->type) {
+        case TT_UNKNOWN:
+        case TT_FUNC:
+            // should not reach backend
+            assert(false);
+        case TT_PRIM_VOID:
+            fatal_error(n->start_token, "can not use a void value");
+            return;
+        case TT_PRIM_U8:
+            emit_value_to_register(v, false);
+            _i("push af");
+            frame->stack_offset += 2;
+            return;
+        case TT_PRIM_U16:
+        case TT_PTR:
+            emit_value_to_register(v, false);
+            _i("push hl");
+            frame->stack_offset += 2;
+            return;
+        case TT_ARRAY:
+            /* Passing an array by value */
+            assert(v.storage == ST_REG_EA);
+            _i("add sp,%d", -t->size);
+            _i("ld d, h");
+            _i("ld e, l");
+            _i("ld hl, sp+0");
+            _i("ld bc, %d", t->size);
+            _i("call __memcpy");
+            frame->stack_offset += t->size;
+            return;
+    }
+}
+
+static void emit_push_temporary(AstNode *n, Value v, StackFrame *frame) {
     if (v.typeId == VOID) {
         fatal_error(n->start_token, "can not use a void value");
         return;
@@ -251,7 +303,7 @@ static void emit_push(AstNode *n, Value v, StackFrame *frame) {
     }
 }
 
-static Value emit_pop(Value v, StackFrame *frame, bool to_aux_reg) {
+static Value emit_pop_temporary(Value v, StackFrame *frame, bool to_aux_reg) {
     const enum Storage st = to_aux_reg ? ST_REG_VAL_AUX : ST_REG_VAL;
 
     switch (v.storage) {
@@ -315,10 +367,10 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
 
     if (v1.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
@@ -459,7 +511,7 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     assert(get_type(v1.typeId)->type == TT_ARRAY);
@@ -475,7 +527,7 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
         _i("ld d, h");
         _i("ld e, l");
     }
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     _i("add hl, de");
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
@@ -486,7 +538,7 @@ Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     assert(get_type(v1.typeId)->type == TT_PTR);
@@ -499,7 +551,7 @@ Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
         _i("ld d, h");
         _i("ld e, l");
     }
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     v1 = emit_value_to_register(v1, false);   // v1 in `hl`
     if (op == BUILTIN_ADD) {
         _i("add hl, de");
@@ -523,7 +575,7 @@ Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     assert(get_type(v1.typeId)->type == TT_ARRAY);
@@ -537,7 +589,7 @@ Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
         _i("ld d, h");
         _i("ld e, l");
     }
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     _i("add hl, de");
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
@@ -592,11 +644,11 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     v1 = emit_value_to_register(v1, false);  // v1 in `a`
 
     // assumes binary op
@@ -735,11 +787,11 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `de`
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
 
     if (v1.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
@@ -876,7 +928,7 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, 
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     if (v1.storage != ST_REG_EA) {
@@ -893,7 +945,7 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, 
         _i("ld d, h");
         _i("ld e, l");
     }
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     if (op == BUILTIN_PLUSASSIGN) {
         _i("ld a, [hl]");
         _i("add a, e");
@@ -922,11 +974,11 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     //AstNode *arg2 = get_node(arg1->next_sibling);
 
     Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
-    emit_push(arg1, v1, frame);
+    emit_push_temporary(arg1, v1, frame);
     Value v2 = emit_expression(arg1->next_sibling, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `de`
-    v1 = emit_pop(v1, frame, false);
+    v1 = emit_pop_temporary(v1, frame, false);
     v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
@@ -1249,8 +1301,7 @@ static void emit_call_push_args(int arg_num, NodeIdx arg_list_head, StackFrame *
 
     assert(n->type == AST_EXPR);
     Value v = emit_expression(arg_list_head, *frame);
-    v = emit_value_to_register(v, false);
-    emit_push(n, v, frame);
+    emit_push_fn_arg(n, v, frame);
 }
 
 static Value emit_call(NodeIdx call, StackFrame frame) {
