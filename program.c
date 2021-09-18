@@ -394,12 +394,14 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                         if (item == 0) {
                             fatal_error(n->start_token, "Zero length array literal not permitted");
                         }
-                        t = typecheck_expr(prog, scope, item, TYPE_UNKNOWN);
+                        TypeId item_type_hint = get_type(type_hint)->type == TT_ARRAY ?
+                            get_type(type_hint)->array.contained : TT_UNKNOWN;
+                        t = typecheck_expr(prog, scope, item, item_type_hint);
                         int len = 1;
                         while (get_node(item)->next_sibling != 0) {
                             len++;
                             item = get_node(item)->next_sibling;
-                            if (!is_type_eq(t, typecheck_expr(prog, scope, item, TYPE_UNKNOWN))) {
+                            if (!is_type_eq(t, typecheck_expr(prog, scope, item, item_type_hint))) {
                                 fatal_error(get_node(item)->start_token, "Unmatched array item type");
                             }
                         }
@@ -594,7 +596,7 @@ static void typecheck_global(Program *prog, NodeIdx node) {
     assert(n->var_def.value != 0);
 
     check_is_literal(prog, n->var_def.value);
-    TypeId v = typecheck_expr(prog, NULL, n->var_def.value, TYPE_UNKNOWN);
+    TypeId v = typecheck_expr(prog, NULL, n->var_def.value, n->var_def.type);
 
     if (n->var_def.type == TYPE_UNKNOWN) {
         n->var_def.type = v;

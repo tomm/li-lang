@@ -1,7 +1,7 @@
 include "li-code/softmath.li";
+include "li-code/nonstdlib.li";
 
 var friends: u8;
-var oldSp: u16;
 var randSeed: u16;
 var map: [[u8; 16]; 16];
 var map2: [[u8; 16]; 16];
@@ -50,15 +50,6 @@ fn life_generation() {
         };
         y += 1;
     };
-}
-
-fn memcpy(dest: &u8, src: &u8, len: u16) {
-    while (len != 0u16) {
-        *dest = *src;
-        dest += 1u16;
-        src += 1u16;
-        len -= 1u16;
-    }
 }
 
 fn copy_tiles_to_vram() {
@@ -161,8 +152,6 @@ MainLoop:
         jr MainLoop
 
 BlitMap:
-        ;ld [oldSp], sp
-
         ld de, map
 
         FOR OFFSET, 0, 32*20, 32
@@ -184,12 +173,6 @@ BlitMap:
             ENDR
         ENDR
 
-        ; restore SP
-        ;ld a, [oldSp]
-        ;ld l, a
-        ;ld a, [oldSp+1]
-        ;ld h, a
-        ;ld sp, hl
         ret
         
 InitMap:
