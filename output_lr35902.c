@@ -225,10 +225,11 @@ static Value emit_value_to_register(Value v, bool to_aux_reg) {
         }
     }
 
+    /*
     else if (get_type(v.typeId)->type == TT_ARRAY) {
         assert(v.storage == ST_REG_EA);
         return v;
-    }
+    }*/
 
     assert(false);
 }
@@ -781,6 +782,27 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
     }
 }
 
+Value emit_assign_array(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    AstNode *arg1 = get_node(n->expr.builtin.first_arg);
+    //AstNode *arg2 = get_node(arg1->next_sibling);
+
+    Value v1 = emit_expression(n->expr.builtin.first_arg, *frame);
+    emit_push_temporary(arg1, v1, frame);
+    Value v2 = emit_expression(arg1->next_sibling, *frame);
+    // v2 (src) in `de`
+    _i("ld d, h");
+    _i("ld e, l");
+    v1 = emit_pop_temporary(v1, frame, false); // v1 (dest) in `hl`
+
+    _i("ld bc, %d", get_type(v1.typeId)->size);
+    _i("push hl");
+    _i("call __memcpy");
+    _i("pop hl");
+
+    return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
+}
+
 Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     AstNode *arg1 = get_node(n->expr.builtin.first_arg);
@@ -1204,6 +1226,8 @@ static BuiltinImpl builtin_impls[] = {
 
     { BUILTIN_LOGICAL_AND, TT_PRIM_U8, TT_PRIM_U8, emit_logical_and },
     { BUILTIN_LOGICAL_OR, TT_PRIM_U8, TT_PRIM_U8, emit_logical_or },
+
+    { BUILTIN_ASSIGN, TT_ARRAY, TT_ARRAY, emit_assign_array },
     { -1 }
 };
 
@@ -1241,13 +1265,13 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
     }
     if (n_args == 1) {
         Str typename_ = get_type(arg1->expr.eval_type)->name;
-        fatal_error(n->start_token, "LR35902 backend does not support operator %s with %.*s argument",
+        fatal_error(n->start_token, "LR35902 backend does not support operator '%s' with %.*s argument",
                 builtin_name(op),
                 (int)typename_.len, typename_.s);
     } else {
         Str typename1 = get_type(arg1->expr.eval_type)->name;
         Str typename2 = get_type(get_node(arg1->next_sibling)->expr.eval_type)->name;
-        fatal_error(n->start_token, "LR35902 backend does not support operator %s with %.*s and %.*s arguments",
+        fatal_error(n->start_token, "LR35902 backend does not support operator '%s' with %.*s and %.*s arguments",
                 builtin_name(op),
                 (int)typename1.len, typename1.s,
                 (int)typename2.len, typename2.s);
@@ -1319,7 +1343,6 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
 
         const int old_stack = frame.stack_offset;
         emit_call_push_args(0, n->expr.call.first_arg, &frame);
-        // XXX does not check function exists, or check argument types!
         _i("call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
         const int stack_correction = frame.stack_offset - old_stack;
         if (stack_correction) {
