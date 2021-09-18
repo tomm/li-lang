@@ -144,7 +144,6 @@ static const ValidBuiltin valid_builtins[] = {
     { -1 }
 };
 
-/*
 static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
     AstNode *n = get_node(expr);
     enum BuiltinOp op = n->expr.builtin.op;
@@ -167,7 +166,6 @@ static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId
         return false;
     }
 }
-*/
 
 /* Pass -1 for TypeType to find any */
 static const struct ValidBuiltin *find_first_matching_builtin(enum BuiltinOp op, enum TypeType t1, enum TypeType t2) {
@@ -198,13 +196,12 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
     NodeIdx arg1 = n->expr.builtin.first_arg;
     NodeIdx arg2 = get_node(arg1)->next_sibling;
 
-    /*
+    /* Mandatory optimization... fold unary negative operator on constants -- needed for globals */
     if (op == BUILTIN_UNARY_NEG) {
-        if (try_fold_unary_neg(prog, scope, expr, typekind_hint)) {
+        if (try_fold_unary_neg(prog, scope, expr, expr_type_hint)) {
             return get_node(expr)->expr.eval_type;
         }
     }
-    */
 
     // All this hideous TT_UNKNOWN/TYPE_UNKNOWN stuff is due to size
     // inference of unsized integer literals...
@@ -283,6 +280,20 @@ error:
             get_type(t2)->name.s);
 }
 
+static void check_int_literal_range(const Token *t, TypeId type, int val) {
+    switch (type) {
+        case U8:
+            if (val < -128 || val > 255) {
+                fatal_error(t, "U8 literal out of range [-128..255]");
+            }
+            break;
+        case U16:
+            if (val < -32768 || val > 65535) {
+                fatal_error(t, "U16 literal out of range [-32768..65535]");
+            }
+            break;
+    }
+}
 
 // XXX also resolves gotos. why do we do both? because AST isn't simple
 // to traverse...
@@ -374,12 +385,15 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     } else {
                         t = TYPE_UNKNOWN;
                     }
+                    check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
                     break;
                 case LIT_U8:
                     t = U8;
+                    check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
                     break;
                 case LIT_U16:
                     t = U16;
+                    check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
                     break;
                 case LIT_VOID:
                     t = VOID;
@@ -595,8 +609,8 @@ static void typecheck_global(Program *prog, NodeIdx node) {
     if (n->var_def.is_const == false && n->var_def.value == 0) return;
     assert(n->var_def.value != 0);
 
-    check_is_literal(prog, n->var_def.value);
     TypeId v = typecheck_expr(prog, NULL, n->var_def.value, n->var_def.type);
+    check_is_literal(prog, n->var_def.value);
 
     if (n->var_def.type == TYPE_UNKNOWN) {
         n->var_def.type = v;

@@ -986,7 +986,7 @@ static NodeIdx parse_var_def(TokenCursor *toks, bool is_const) {
     NodeIdx value = 0;
     if (tok_peek(toks, 0)->type == T_ASSIGN) {
         chomp(toks, T_ASSIGN);
-        value = parse_primary_expression(toks);
+        value = parse_unary_expression(toks);
     } else if (is_const) {
         fatal_error(tok_peek(toks, 0), "Expected assignment to constant");
     }

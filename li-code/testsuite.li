@@ -298,6 +298,7 @@ fn main() {
     test_ptr_cast();
     test_while();
     test_while_break();
+    test_array_pass_by_value();
 
     output_results();
 }
@@ -559,4 +560,20 @@ fn test_while_break() {
     expect(arr[2] == 4);
     expect(arr[3] == -3);
     expect(arr[4] == 0);
+}
+
+fn test_array_pass_by_value() {
+    var a: [u8; 3];
+
+    a[0] = 0;
+    a[1] = 2;
+    a[2] = 4;
+
+    _test_array_pass_by_value(a);
+}
+
+fn _test_array_pass_by_value(arr: [u8;3]) {
+    expect(arr[0] == 0);
+    expect(arr[1] == 2);
+    expect(arr[2] == 4);
 }

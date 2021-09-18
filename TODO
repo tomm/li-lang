@@ -5,6 +5,7 @@
 * passing arrays by value
 * structs
 * bool type
+* function pointers
 * int + &T
 * &T - &T
 * enforce constness
