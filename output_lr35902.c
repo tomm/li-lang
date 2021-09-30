@@ -174,6 +174,34 @@ static StackVarIdx alloc_stack_var(const Token *t, StackFrame frame, StackVar v)
     }
 }
 
+static int get_fn_return_type_stack_size(TypeId ret) {
+    const Type *t = get_type(ret);
+    switch (t->type) {
+        case TT_ARRAY:
+            return t->size;
+        case TT_PTR:
+        case TT_PRIM_U8:
+        case TT_PRIM_U16:
+        case TT_PRIM_VOID:
+            // returned in register, so no stack size
+            return 0;
+        default: assert(false);
+    }
+}
+
+static int get_call_return_type_stack_size(const AstNode *call) {
+    const AstNode *callee = get_node(call->expr.call.callee);
+    // consider size of return-by-value non-primitive types (array/struct)
+    if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
+        const AstNode *fn = lookup_global_sym(callee->expr.ident);
+        assert(fn->type == AST_FN);
+        return get_fn_return_type_stack_size(get_type(fn->fn.type)->func.ret);
+    } else {
+        // need to handle fn call on expression
+        assert(false);
+    }
+}
+
 static void unalloc_stack_var() {
     StackVar v;
     vec_pop(&_stack_vars, &v);
@@ -225,11 +253,10 @@ static Value emit_value_to_register(Value v, bool to_aux_reg) {
         }
     }
 
-    /*
     else if (get_type(v.typeId)->type == TT_ARRAY) {
         assert(v.storage == ST_REG_EA);
         return v;
-    }*/
+    }
 
     assert(false);
 }
@@ -331,7 +358,7 @@ static Value emit_pop_temporary(Value v, StackFrame *frame, bool to_aux_reg) {
                     }
             }
         case ST_REG_EA:
-            _i("pop hl");
+            _i("pop %s", to_aux_reg ? "de" : "hl");
             frame->stack_offset -= 2;
             return (Value) { .storage = ST_REG_EA, .typeId = v.typeId };
     }
@@ -1349,9 +1376,11 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
             _i("add sp, %d", stack_correction);
         }
         frame.stack_offset += stack_correction;
+
         Type *fntype = get_type(fn->fn.type);
+        Type *rettype = get_type(fntype->func.ret);
         assert(fntype->type == TT_FUNC);
-        return (Value) { .typeId = fntype->func.ret, .storage = ST_REG_VAL };
+        return (Value) { .typeId = fntype->func.ret, .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
     } else {
         fatal_error(callee->start_token, "fn call by expression not implemented");
     }

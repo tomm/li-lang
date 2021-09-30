@@ -1,3 +1,5 @@
+* `let x=0;` at end of function screws up return type.
+* 0; at end of function causes assertion (INT_ANY unresolved to backend)
 * for loop
 * do while loop
 * return

@@ -562,6 +562,12 @@ fn test_while_break() {
     expect(arr[4] == 0);
 }
 
+fn zero() -> u8 {
+    var a: [u8; 3];
+    a[0] = 123;
+    0
+}
+
 fn test_array_as_value() {
     var a: [u8; 3];
 
@@ -570,28 +576,29 @@ fn test_array_as_value() {
     a[2] = 4;
 
     var b = a;
+    var c = _test_array_pass_and_return(a);
+
+    // XXX this fails because calling zero() overwrites the temporary
+    // return value of _test_array_pass_and_return. proper return by
+    // value implementation needed
+    //expect(_test_array_pass_and_return(a)[zero()]==10);
 
     expect(b[0] == a[0]);
     expect(b[1] == a[1]);
     expect(b[2] == a[2]);
 
     b[1] = 13;
-    expect(a[1] == 2);
-
-    /*var c =*/ _test_array_pass_and_return(a);
 
     expect(a[0] == 0);
     expect(a[1] == 2);
     expect(a[2] == 4);
 
-    /*
     expect(c[0] == 10);
     expect(c[1] == 20);
     expect(c[2] == 30);
-    */
 }
 
-fn _test_array_pass_and_return(a: [u8;3]) {//-> [u8;3] {
+fn _test_array_pass_and_return(a: [u8;3]) -> [u8;3] {
     var b: [u8;3];
     expect(a[0] == 0);
     expect(a[1] == 2);
@@ -600,5 +607,5 @@ fn _test_array_pass_and_return(a: [u8;3]) {//-> [u8;3] {
     a[0] = 99;
 
     b[0] = 10; b[1] = 20; b[2] = 30;
-    //b
+    b
 }

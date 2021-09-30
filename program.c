@@ -537,7 +537,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     .name = n->expr.local_scope.var_name,
                     .type = n->expr.local_scope.var_type
                 });
-                t = typecheck_expr(prog, scope, n->expr.local_scope.scoped_expr, TYPE_UNKNOWN);
+                t = typecheck_expr(prog, scope, n->expr.local_scope.scoped_expr, type_hint);
                 scope_pop(scope);
             }
             break;
