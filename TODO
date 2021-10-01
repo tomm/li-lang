@@ -1,10 +1,9 @@
-* `let x=0;` at end of function screws up return type.
-* 0; at end of function causes assertion (INT_ANY unresolved to backend)
+* unused number literal causes backend crash. ie `1;`
 * for loop
 * do while loop
 * return
 * switch
-* passing arrays by value
+* real passing arrays by value
 * structs
 * bool type
 * function pointers

@@ -840,8 +840,23 @@ static void insert_assignment(NodeIdx list_expr, const Token *ident, NodeIdx val
         }
     });
 
+    // need a void literal after the assignment, so it does not
+    // alter the value of the local scope
+    NodeIdx void_lit = alloc_node();
+    set_node(void_lit, &(AstNode) {
+        .type = AST_EXPR,
+        .start_token = ident,
+        .expr = {
+            .type = EXPR_LITERAL,
+            .literal = {
+                .type = LIT_VOID
+            }
+        }
+    });
+
     // insert the assignment into the list expression
-    get_node(assignment)->next_sibling = list->expr.list.first_child;
+    get_node(assignment)->next_sibling = void_lit;
+    get_node(void_lit)->next_sibling = list->expr.list.first_child;
     list->expr.list.first_child = assignment;
 }
 
