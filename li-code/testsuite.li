@@ -40,13 +40,13 @@ fn test_var_globals() -> void {
     expect(test_arr_2d_u16[1u16][1u16] == 513);
 }
 
-var passes: u8;
-var fails: u8;
-var total: u8;
+var passes: u8,
+    fails: u8,
+    total: u8;
 
-var test_u16: u16;
-var test_arr_u8: [u8; 4];
-var test_arr_2d_u16: [[u16; 2]; 2];
+var test_u16: u16,
+    test_arr_u8: [u8; 4],
+    test_arr_2d_u16: [[u16; 2]; 2];
 
 fn pass() { passes = passes + 1; total = total + 1; }
 fn fail_() { fails = fails + 1; total = total + 1; } // seems 'fail' is an rgbasm special thing...

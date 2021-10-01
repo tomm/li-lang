@@ -1020,44 +1020,53 @@ static TypeId parse_type(TokenCursor *toks) {
     }
 }
 
-static NodeIdx parse_var_def(TokenCursor *toks, bool is_const) {
-    NodeIdx var = alloc_node();
+static void parse_var_def(TokenCursor *toks, ChildCursor *module_children, bool is_const) {
+    for(;;) {
+        NodeIdx var = alloc_node();
 
-    // expect variable name
-    const Token *t = tok_next(toks);
+        // expect variable name
+        const Token *t = tok_next(toks);
 
-    if (t->type != T_IDENT) {
-        parse_error("Expected variable name", T_IDENT, t);
-    }
-
-    TypeId type = TYPE_UNKNOWN;
-    if (tok_peek(toks, 0)->type == T_COLON) {
-        chomp(toks, T_COLON);
-        type = parse_type(toks);
-    }
-
-    NodeIdx value = 0;
-    if (tok_peek(toks, 0)->type == T_ASSIGN) {
-        chomp(toks, T_ASSIGN);
-        value = parse_unary_expression(toks);
-    } else if (is_const) {
-        fatal_error(tok_peek(toks, 0), "Expected assignment to constant");
-    }
-
-    chomp(toks, T_SEMICOLON);
-
-    set_node(var, &(AstNode) {
-        .type = AST_DEF_VAR,
-        .start_token = t,
-        .var_def = {
-            .name = t->ident,
-            .type = type,
-            .is_const = is_const,
-            .value = value
+        if (t->type != T_IDENT) {
+            parse_error("Expected variable name", T_IDENT, t);
         }
-    });
 
-    return var;
+        TypeId type = TYPE_UNKNOWN;
+        if (tok_peek(toks, 0)->type == T_COLON) {
+            chomp(toks, T_COLON);
+            type = parse_type(toks);
+        }
+
+        NodeIdx value = 0;
+        if (tok_peek(toks, 0)->type == T_ASSIGN) {
+            chomp(toks, T_ASSIGN);
+            value = parse_unary_expression(toks);
+        } else if (is_const) {
+            fatal_error(tok_peek(toks, 0), "Expected assignment to constant");
+        }
+
+        set_node(var, &(AstNode) {
+            .type = AST_DEF_VAR,
+            .start_token = t,
+            .var_def = {
+                .name = t->ident,
+                .type = type,
+                .is_const = is_const,
+                .value = value
+            }
+        });
+
+        ChildCursor_append(module_children, var);
+
+        if (tok_peek(toks, 0)->type == T_COMMA) {
+            chomp(toks, T_COMMA);
+            continue;
+        }
+        else {
+            chomp(toks, T_SEMICOLON);
+            break;
+        }
+    }
 }
 
 static NodeIdx parse_function(TokenCursor *toks) {
@@ -1211,10 +1220,10 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
 
         switch (t->type) {
             case T_CONST:
-                ChildCursor_append(children, parse_var_def(toks, true));
+                parse_var_def(toks, children, true);
                 break;
             case T_VAR:
-                ChildCursor_append(children, parse_var_def(toks, false));
+                parse_var_def(toks, children, false);
                 break;
             case T_FN:
                 ChildCursor_append(children, parse_function(toks));
