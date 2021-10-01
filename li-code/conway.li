@@ -1,10 +1,10 @@
 include "li-code/softmath.li";
 include "li-code/nonstdlib.li";
 
-var friends: u8;
-var randSeed: u16;
-var map: [[u8; 16]; 16];
-var map2: [[u8; 16]; 16];
+var friends: u8,
+    randSeed: u16,
+    map: [[u8; 16]; 16],
+    map2: [[u8; 16]; 16];
 
 fn get_map_wrapped(x: u8, y: u8) -> u8 { map[x&0xf][y&0xf] }
 

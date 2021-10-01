@@ -62,6 +62,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_ELSE: return "else";
         case T_RARROW: return "->";
         case T_WHILE: return "while";
+        case T_FOR: return "for";
         case T_EOF: return "end-of-file";
         default: assert(false);
     }
@@ -221,6 +222,8 @@ Vec lex(Str buf, const char *filename) {
                 EMIT(((Token) { T_ELSE, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "while")) {
                 EMIT(((Token) { T_WHILE, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "for")) {
+                EMIT(((Token) { T_FOR, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "break")) {
                 EMIT(((Token) { T_BREAK, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "continue")) {

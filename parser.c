@@ -1460,6 +1460,9 @@ void print_ast(NodeIdx nidx, int depth) {
                         print_ast(arg, depth+2);
                     }
                     break;
+                case EXPR_RETURN:
+                    printf("return something\n");
+                    break;
                 case EXPR_CAST:
                     {
                         Str name = get_type(node->expr.cast.to_type)->name;
