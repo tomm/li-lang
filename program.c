@@ -24,11 +24,13 @@ typedef struct JumpLabel {
 typedef struct Scope {
     Vec /*<Variable>*/ vars;
     Vec /*<JumpLabel>*/ labels;
+    TypeId return_type;
 } Scope;
-static Scope new_localscope() {
+static Scope new_localscope(TypeId return_type) {
     return (Scope){
         .vars = vec_init(sizeof(Variable)),
         .labels = vec_init(sizeof(JumpLabel)),
+        .return_type = return_type
     };
 }
 static void free_localscope(Scope *scope) { vec_free(&scope->vars); }
@@ -295,6 +297,16 @@ static void check_int_literal_range(const Token *t, TypeId type, int val) {
     }
 }
 
+static void validate_return(const Token *t, TypeId expected, TypeId returned) {
+    if (!is_type_eq(expected, returned)) {
+        fatal_error(t, "function returned %.*s but should return %.*s",
+                (int)get_type(returned)->name.len,
+                get_type(returned)->name.s,
+                (int)get_type(expected)->name.len,
+                get_type(expected)->name.s);
+    }
+}
+
 // XXX also resolves gotos. why do we do both? because AST isn't simple
 // to traverse...
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
@@ -544,6 +556,13 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
         case EXPR_BUILTIN:
             t = typecheck_builtin(prog, scope, expr, type_hint);
             break;
+        case EXPR_RETURN:
+            {
+                TypeId ret = typecheck_expr(prog, scope, n->expr.return_.val, type_hint);
+                validate_return(n->start_token, scope->return_type, ret);
+                t = NEVER;
+            }
+            break;
     }
     n->expr.eval_type = t;
     return t;
@@ -557,7 +576,9 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
         return;
     }
 
-    Scope scope = new_localscope();
+    TypeId expected = get_type(fn_node->fn.type)->func.ret;
+    Scope scope = new_localscope(expected);
+
     /* Add function arguments to scope */
     for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
         assert(get_node(arg)->type == AST_FN_ARG);
@@ -568,18 +589,9 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
         });
     }
 
-    TypeId expected = get_type(fn_node->fn.type)->func.ret;
     TypeId returned = typecheck_expr(prog, &scope, fn_node->fn.body, expected);
 
-    if (!is_type_eq(expected, returned)) {
-        fatal_error(fn_node->start_token, "function %.*s returned %.*s but should return %.*s",
-                (int)fn_node->fn.name.len,
-                fn_node->fn.name.s,
-                (int)get_type(returned)->name.len,
-                get_type(returned)->name.s,
-                (int)get_type(expected)->name.len,
-                get_type(expected)->name.s);
-    }
+    validate_return(fn_node->start_token, scope.return_type, returned);
 
     free_localscope(&scope);
 }

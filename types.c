@@ -38,6 +38,15 @@ void init_types() {
     });
 
     add_type((Type) {
+        /* NEVER */
+        .name = { .s = "never", .len = 5 },
+        .size = 0,
+        .stack_size = 0,
+        .stack_offset = 0,
+        .type = TT_NEVER
+    });
+
+    add_type((Type) {
         /* VOID */
         .name = { .s = "void", .len = 4 },
         .size = 0,
@@ -102,16 +111,20 @@ TypeId make_array_type(int num_elems, TypeId contained) {
     });
 }
 
+/* XXX bad name. is really "does b fulfill requirements of a"
+ */
 bool is_type_eq(TypeId a, TypeId b) {
     Type *ta = get_type(a);
     Type *tb = get_type(b);
+    // never type is always ok
+    if ((ta->type != TT_UNKNOWN) && (tb->type == TT_NEVER)) return true;
+
     switch (ta->type) {
         case TT_UNKNOWN:
             return false;
+        case TT_NEVER:
         case TT_PRIM_VOID:
-            return a == b;
         case TT_PRIM_U8:
-            return a == b;
         case TT_PRIM_U16:
             return a == b;
         case TT_PTR:

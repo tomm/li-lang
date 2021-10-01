@@ -299,8 +299,20 @@ fn main() {
     test_while();
     test_while_break();
     test_array_as_value();
+    expect(test_return(1) == 't');
+    expect(test_return(0) == 'f');
 
     output_results();
+}
+
+fn test_return(v: u8) -> u8 {
+    // allocate needless local, to check `return` deallocs stack frame correctly
+    var i = 0u8;
+    if (v == 0) {
+        return 'f'
+    } else {
+        return 't'
+    }
 }
 
 // wrap operators to confound constant folding optimizer

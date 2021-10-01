@@ -135,8 +135,9 @@ typedef struct StackVar {
 
 typedef struct StackFrame {
     int num_vars;
-    int stack_offset;
+    int stack_offset; // offset caused by temporaries being pushed onto stack
     int locals_top; // stack offset to next allocated local variable
+    int locals_size; // total size of local vars
 } StackFrame;
 
 Vec /*<StackVar>*/ _stack_vars;
@@ -1495,6 +1496,18 @@ static Value emit_local_scope(NodeIdx scope, StackFrame frame) {
     return v;
 }
 
+static Value emit_return(NodeIdx val, StackFrame frame) {
+    Value ret_val = emit_expression(val, frame);
+    emit_value_to_register(ret_val, false);
+
+    if (frame.locals_size) {
+        _i("add sp, %d", frame.locals_size);
+    }
+
+    _i("ret");
+    return ret_val;
+}
+
 static Value emit_expression(NodeIdx expr, StackFrame frame) {
     Value v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
     AstNode *n = get_node(expr);
@@ -1573,6 +1586,8 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_while_loop(expr, frame);
         case EXPR_LOCAL_SCOPE:
             return emit_local_scope(expr, frame);
+        case EXPR_RETURN:
+            return emit_return(n->expr.return_.val, frame);
         default:
             assert(false);
     }
@@ -1614,6 +1629,9 @@ static int get_max_local_vars_size(NodeIdx n)
         case EXPR_LOCAL_SCOPE:
             size = get_type(node->expr.local_scope.var_type)->size +
                    get_max_local_vars_size(node->expr.local_scope.scoped_expr);
+            break;
+        case EXPR_RETURN:
+            size = max(size, get_max_local_vars_size(node->expr.return_.val));
             break;
         case EXPR_IF_ELSE:
             size = max(size, get_max_local_vars_size(node->expr.if_else.condition));
@@ -1678,7 +1696,7 @@ static Value emit_fn(NodeIdx fn) {
     int bp_offset = 2; // return address at 0(sp), 1(sp)
     bp_offset += local_vars_bytes;
 
-    StackFrame frame = { .num_vars = 0, .stack_offset = 0, .locals_top = 0 };
+    StackFrame frame = { .num_vars = 0, .stack_offset = 0, .locals_top = 0, .locals_size = local_vars_bytes };
 
     for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
         assert(get_node(arg)->type == AST_FN_ARG);
@@ -1702,19 +1720,7 @@ static Value emit_fn(NodeIdx fn) {
     }
     */
     
-    Value ret_val = emit_expression(fn_node->fn.body, frame);
-    // Typecheck should have been done in program.c
-    assert(is_type_eq(get_type(fn_node->fn.type)->func.ret, ret_val.typeId));
-
-    emit_value_to_register(ret_val, false);
-
-    if (local_vars_bytes) {
-        _i("add sp, %d", local_vars_bytes);
-    }
-    _i("ret");
-
-
-    return ret_val;
+    return emit_return(fn_node->fn.body, frame);
 }
 
 static void _emit_const(NodeIdx node) {

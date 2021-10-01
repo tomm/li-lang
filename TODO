@@ -1,9 +1,8 @@
 * unused number literal causes backend crash. ie `1;`
 * for loop
 * do while loop
-* return
 * switch
-* real passing arrays by value
+* real returning arrays by value
 * structs
 * bool type
 * function pointers

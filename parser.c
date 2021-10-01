@@ -335,6 +335,24 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 return expr;
             }
             break;
+        case T_RETURN:
+            {
+                NodeIdx val = parse_expression(toks);
+
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_RETURN,
+                        .return_ = {
+                            .val = val
+                        }
+                    }
+                });
+                return expr;
+            }
+            break;
         default:
             parse_error("Expected primary expression", 0, t);
     }
@@ -808,11 +826,10 @@ static NodeIdx parse_expression(TokenCursor *toks) {
 static void insert_assignment(NodeIdx list_expr, const Token *ident, NodeIdx value) {
     ChildCursor args = ChildCursor_init();
     AstNode *v = get_node(value);
-    AstNode *list = get_node(list_expr);
 
     assert(ident->type == T_IDENT);
     assert(v->type == AST_EXPR);
-    assert(list->type == AST_EXPR && list->expr.type == EXPR_LIST);
+    assert(get_node(list_expr)->type == AST_EXPR && get_node(list_expr)->expr.type == EXPR_LIST);
 
     NodeIdx ident_expr = alloc_node();
     set_node(ident_expr, &(AstNode) {
@@ -856,8 +873,8 @@ static void insert_assignment(NodeIdx list_expr, const Token *ident, NodeIdx val
 
     // insert the assignment into the list expression
     get_node(assignment)->next_sibling = void_lit;
-    get_node(void_lit)->next_sibling = list->expr.list.first_child;
-    list->expr.list.first_child = assignment;
+    get_node(void_lit)->next_sibling = get_node(list_expr)->expr.list.first_child;
+    get_node(list_expr)->expr.list.first_child = assignment;
 }
 
 static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator) {
