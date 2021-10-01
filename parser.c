@@ -822,14 +822,14 @@ static NodeIdx parse_expression(TokenCursor *toks) {
 /*
  * Insert an assignment builting at the beginning of `list_expr`,
  * assigning `ident` = `value`
+ * Returns new NodeIdx
  */
-static void insert_assignment(NodeIdx list_expr, const Token *ident, NodeIdx value) {
+static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeIdx value) {
     ChildCursor args = ChildCursor_init();
-    AstNode *v = get_node(value);
 
     assert(ident->type == T_IDENT);
-    assert(v->type == AST_EXPR);
-    assert(get_node(list_expr)->type == AST_EXPR && get_node(list_expr)->expr.type == EXPR_LIST);
+    assert(get_node(value)->type == AST_EXPR);
+    assert(get_node(scoped_expr)->type == AST_EXPR);
 
     NodeIdx ident_expr = alloc_node();
     set_node(ident_expr, &(AstNode) {
@@ -872,14 +872,28 @@ static void insert_assignment(NodeIdx list_expr, const Token *ident, NodeIdx val
     });
 
     // insert the assignment into the list expression
-    get_node(assignment)->next_sibling = void_lit;
-    get_node(void_lit)->next_sibling = get_node(list_expr)->expr.list.first_child;
-    get_node(list_expr)->expr.list.first_child = assignment;
+    NodeIdx list = alloc_node();
+    ChildCursor args2 = ChildCursor_init();
+    ChildCursor_append(&args2, assignment);
+    ChildCursor_append(&args2, void_lit);
+    ChildCursor_append(&args2, scoped_expr);
+    set_node(list, &(AstNode) {
+        .type = AST_EXPR,
+        .start_token = ident,
+        .expr = {
+            .type = EXPR_LIST,
+            .list = {
+                .first_child = args2.first_child
+            }
+        }
+    });
+    return list;
 }
 
-static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator) {
-    if (tok_peek(toks, 0)->type == T_VAR) {
-        const Token *start_token = chomp(toks, T_VAR);
+static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator, bool skip_var_keyword) {
+    if (tok_peek(toks, 0)->type == T_VAR || skip_var_keyword) {
+        const Token *start_token = tok_peek(toks, 0);
+        if (!skip_var_keyword) chomp(toks, T_VAR);
         const Token *name = chomp(toks, T_IDENT);
         TypeId type = TYPE_UNKNOWN;
         if (tok_peek(toks, 0)->type == T_COLON) {
@@ -891,11 +905,18 @@ static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType termi
             chomp(toks, T_ASSIGN);
             value = parse_expression(toks);
         }
-        chomp(toks, T_SEMICOLON);
-        NodeIdx scoped_expr = parse_list_expression(toks, terminator);
+
+        NodeIdx scoped_expr = 0;
+        if (tok_peek(toks, 0)->type == T_COMMA) {
+            chomp(toks, T_COMMA);
+            scoped_expr = parse_localscope_expression(toks, terminator, true);
+        } else {
+            chomp(toks, T_SEMICOLON);
+            scoped_expr = parse_list_expression(toks, terminator);
+        }
 
         if (value) {
-            insert_assignment(scoped_expr, name, value);
+            scoped_expr = insert_assignment(scoped_expr, name, value);
         }
 
         NodeIdx scope = alloc_node();
@@ -925,7 +946,7 @@ static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator)
     bool is_void = false;
 
     while (tok_peek(toks, 0)->type != terminator) {
-        ChildCursor_append(&exprs, parse_localscope_expression(toks, terminator));
+        ChildCursor_append(&exprs, parse_localscope_expression(toks, terminator, false));
         is_void = false;
         if (tok_peek(toks, 0)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);

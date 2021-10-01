@@ -412,8 +412,9 @@ fn test_ptr_cast() {
 }
 
 fn test_ptr_arith() {
-    var a: [u16; 4];
-    var p: &u16;
+    var a: [u16; 4],
+        p: &u16;
+
     p = &a[0];
     *p = 1;
     p += 1;
@@ -444,10 +445,10 @@ fn test_ptr_array(a: &[u8; 3]) {
 }
 
 fn test_ptr() {
-    var p: &u8;
-    var pp: &&u8;
-    var x: u8;
-    var y: u8;
+    var p: &u8,
+        pp: &&u8,
+        x: u8,
+        y: u8;
 
     //x = *p;
     p = &x;
@@ -490,9 +491,9 @@ fn local_scope_argpass(a: u8) -> u8 {
 }
 
 fn test_local_scope(a: u8) -> u8 {
-    var l1 = 10u8;
-    var l2: u8;
-    var l3: [u16; 2];
+    var l1 = 10u8,
+        l2: u8,
+        l3: [u16; 2];
 
     expect(l1 == 10);
 
