@@ -398,9 +398,8 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
         // array indexing
         else if (start_token->type == T_LSQBRACKET) {
             chomp(toks, T_LSQBRACKET);
-            ChildCursor args = ChildCursor_init();
-            ChildCursor_append(&args, n);
-            ChildCursor_append(&args, parse_expression(toks));
+            NodeIdx arg1 = n;
+            NodeIdx arg2 = parse_expression(toks);
             chomp(toks, T_RSQBRACKET);
 
             n = alloc_node();
@@ -411,7 +410,8 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                     .type = EXPR_BUILTIN,
                     .builtin = {
                         .op = BUILTIN_ARRAY_INDEXING,
-                        .first_arg = args.first_child,
+                        .arg1 = arg1,
+                        .arg2 = arg2,
                     }
                 }
             });
@@ -450,8 +450,7 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
         (t->type == T_EXCLAMATION) ||
         (t->type == T_AMPERSAND)) {
         tok_next(toks);
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, parse_unary_expression(toks));
+        NodeIdx arg1 = parse_unary_expression(toks);
 
         NodeIdx n = alloc_node();
         set_node(n, &(AstNode) {
@@ -471,7 +470,8 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
                         : t->type == T_AMPERSAND
                         ? BUILTIN_UNARY_ADDRESSOF
                         : (assert(false), 0),
-                    .first_arg = args.first_child,
+                    .arg1 = arg1,
+                    .arg2 = 0
                 }
             }
         });
@@ -513,10 +513,8 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
            tok_peek(toks, 0)->type == T_SLASH ||
            tok_peek(toks, 0)->type == T_PERCENT) {
         const Token *t = tok_next(toks);
-
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_cast_expression(toks));
+        NodeIdx arg1 = n;
+        NodeIdx arg2 = parse_cast_expression(toks);
 
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -532,7 +530,8 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
                         : t->type == T_PERCENT
                         ? BUILTIN_MODULO
                         : (assert(false), 0),
-                    .first_arg = args.first_child,
+                    .arg1 = arg1,
+                    .arg2 = arg2,
                 }
             }
         });
@@ -568,10 +567,8 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
             break;
         }
         const Token *t = tok_next(toks);
-
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_multiplicative_expression(toks));
+        NodeIdx arg1 = n;
+        NodeIdx arg2 = parse_multiplicative_expression(toks);
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -590,7 +587,8 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
                         : t->type == T_ACUTE ? BUILTIN_BITXOR
                         : (assert(false), 0)
                     ),
-                    .first_arg = args.first_child
+                    .arg1 = arg1,
+                    .arg2 = arg2,
                 }
             }
         });
@@ -619,9 +617,8 @@ static NodeIdx parse_logical_expression(TokenCursor *toks) {
         const Token *t = tok_next(toks);
         tok_next(toks); // eat second character of && or ||
 
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_additive_expression(toks));
+        NodeIdx arg1 = n;
+        NodeIdx arg2 = parse_additive_expression(toks);
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -631,7 +628,8 @@ static NodeIdx parse_logical_expression(TokenCursor *toks) {
                 .type = EXPR_BUILTIN,
                 .builtin = {
                     .op = t->type == T_PIPE ? BUILTIN_LOGICAL_OR : BUILTIN_LOGICAL_AND,
-                    .first_arg = args.first_child
+                    .arg1 = arg1,
+                    .arg2 = arg2,
                 }
             }
         });
@@ -651,10 +649,8 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
            tok_peek(toks, 0)->type == T_LT
     ) {
         const Token *t = tok_next(toks);
-
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_logical_expression(toks));
+        NodeIdx arg1 = n;
+        NodeIdx arg2 = parse_logical_expression(toks);
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -676,7 +672,8 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
                           : t->type == T_LTE
                           ? BUILTIN_LTE
                           : (assert(false), 0),
-                    .first_arg = args.first_child
+                    .arg1 = arg1,
+                    .arg2 = arg2,
                 }
             }
         });
@@ -772,9 +769,8 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
     {
         const Token *t = tok_next(toks);
 
-        ChildCursor args = ChildCursor_init();
-        ChildCursor_append(&args, n);
-        ChildCursor_append(&args, parse_assignment_expression(toks));
+        NodeIdx arg1 = n;
+        NodeIdx arg2 = parse_assignment_expression(toks);
         
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -806,7 +802,8 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
                         : t->type == T_BITXORASSIGN
                         ? BUILTIN_BITXORASSIGN
                         : (assert(false), 0),
-                    .first_arg = args.first_child
+                    .arg1 = arg1,
+                    .arg2 = arg2,
                 }
             }
         });
@@ -825,8 +822,6 @@ static NodeIdx parse_expression(TokenCursor *toks) {
  * Returns new NodeIdx
  */
 static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeIdx value) {
-    ChildCursor args = ChildCursor_init();
-
     assert(ident->type == T_IDENT);
     assert(get_node(value)->type == AST_EXPR);
     assert(get_node(scoped_expr)->type == AST_EXPR);
@@ -841,9 +836,6 @@ static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeId
         }
     });
 
-    ChildCursor_append(&args, ident_expr);
-    ChildCursor_append(&args, value);
-    
     NodeIdx assignment = alloc_node();
     set_node(assignment, &(AstNode) {
         .type = AST_EXPR,
@@ -851,8 +843,9 @@ static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeId
         .expr = {
             .type = EXPR_BUILTIN,
             .builtin = {
-                .first_arg = args.first_child,
-                .op = BUILTIN_ASSIGN
+                .op = BUILTIN_ASSIGN,
+                .arg1 = ident_expr,
+                .arg2 = value
             }
         }
     });
@@ -1456,8 +1449,9 @@ void print_ast(NodeIdx nidx, int depth) {
                     printf("expr_builtin (%s)\n", builtin_name(node->expr.builtin.op));
                     _indent(depth+2);
                     printf("args\n");
-                    for (NodeIdx arg=node->expr.builtin.first_arg; arg != 0; arg = get_node(arg)->next_sibling) {
-                        print_ast(arg, depth+2);
+                    print_ast(node->expr.builtin.arg1, depth+2);
+                    if (node->expr.builtin.arg2) {
+                        print_ast(node->expr.builtin.arg2, depth+2);
                     }
                     break;
                 case EXPR_RETURN:

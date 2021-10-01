@@ -151,8 +151,7 @@ static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId
     enum BuiltinOp op = n->expr.builtin.op;
     assert(op == BUILTIN_UNARY_NEG);
 
-    NodeIdx arg = n->expr.builtin.first_arg;
-    AstNode *a = get_node(arg);
+    AstNode *a = get_node(n->expr.builtin.arg1);
     if (a->expr.type == EXPR_LITERAL &&
         (a->expr.literal.type == LIT_INT_ANY ||
          a->expr.literal.type == LIT_U8 ||
@@ -192,11 +191,10 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
     AstNode *n = get_node(expr);
     enum BuiltinOp op = n->expr.builtin.op;
 
-    const int num_args = ast_node_sibling_size(n->expr.builtin.first_arg);
-    assert(num_args == 1 || num_args == 2);
+    const int num_args = n->expr.builtin.arg2 == 0 ? 1 : 2;
 
-    NodeIdx arg1 = n->expr.builtin.first_arg;
-    NodeIdx arg2 = get_node(arg1)->next_sibling;
+    NodeIdx arg1 = n->expr.builtin.arg1;
+    NodeIdx arg2 = n->expr.builtin.arg2;
 
     /* Mandatory optimization... fold unary negative operator on constants -- needed for globals */
     if (op == BUILTIN_UNARY_NEG) {

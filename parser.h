@@ -113,7 +113,8 @@ typedef struct AstNode {
                 } call;
 
                 struct {
-                    NodeIdx first_arg;
+                    NodeIdx arg1;
+                    NodeIdx arg2;
                     enum BuiltinOp {
                         BUILTIN_ADD,
                         BUILTIN_SUB,
