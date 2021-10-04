@@ -296,6 +296,7 @@ fn main() {
     test_ptr();
     test_ptr_arith();
     test_ptr_cast();
+    test_loop();
     test_while();
     test_while_break();
     test_array_as_value();
@@ -524,6 +525,19 @@ fn test_local_scope(a: u8) -> u8 {
     expect(local_scope_argpass(l1) == 4);
 
     l3[1] as u8
+}
+
+fn test_loop() {
+    var i = 0u8;
+
+    'outer: loop {
+        loop {
+            i += 1;
+            if i == 10 { break 'outer; }
+        };
+    };
+
+    expect(i == 10);
 }
 
 fn test_while() {

@@ -91,7 +91,7 @@ typedef struct AstNode {
 
                 struct {
                     Str label;
-                    NodeIdx condition;
+                    NodeIdx condition; // 0 indicates unconditional `loop`
                     NodeIdx body;
                 } while_loop;
 

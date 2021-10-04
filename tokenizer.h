@@ -63,6 +63,7 @@ typedef struct Token {
         T_LITERAL_ANY_INT,
         T_RARROW,
         T_WHILE,
+        T_LOOP,
         T_FOR,
         T_EOF
     } type;

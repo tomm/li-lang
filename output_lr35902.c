@@ -1392,9 +1392,11 @@ static Value emit_while_loop(NodeIdx expr, StackFrame frame) {
 
     __(".l%d_continue:", jump_label);
 
-    Value condition = emit_expression(n->expr.while_loop.condition, frame);
-    emit_truthy_test_to_zflag(get_node(n->expr.while_loop.condition)->start_token, condition);
-    _i("jp z, .l%d_break", jump_label);
+    if (n->expr.while_loop.condition != 0) {
+        Value condition = emit_expression(n->expr.while_loop.condition, frame);
+        emit_truthy_test_to_zflag(get_node(n->expr.while_loop.condition)->start_token, condition);
+        _i("jp z, .l%d_break", jump_label);
+    }
     /*Value body =*/ emit_expression(n->expr.while_loop.body, frame);
     _i("jp .l%d_continue", jump_label);
     __(".l%d_break:", jump_label);
@@ -1653,7 +1655,9 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.cast.arg));
             break;
         case EXPR_WHILE_LOOP:
-            size = max(size, get_max_local_vars_size(node->expr.while_loop.condition));
+            if (node->expr.while_loop.condition) {
+                size = max(size, get_max_local_vars_size(node->expr.while_loop.condition));
+            }
             size = max(size, get_max_local_vars_size(node->expr.while_loop.body));
             break;
         case EXPR_GOTO:

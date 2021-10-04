@@ -682,20 +682,30 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
     return n;
 }
 
+static bool is_loop_token(const Token *t) {
+    return t->type == T_WHILE || t->type == T_LOOP || t->type == T_FOR;
+}
+
 static NodeIdx parse_conditional_expression(TokenCursor *toks) {
     Str label = { .s = 0 };
 
     if (tok_peek(toks, 0)->type == T_JUMP_LABEL &&
         tok_peek(toks, 1)->type == T_COLON &&
-        tok_peek(toks, 2)->type == T_WHILE) {
+        is_loop_token(tok_peek(toks, 2))) {
 
         label = chomp(toks, T_JUMP_LABEL)->label;
         chomp(toks, T_COLON);
     }
 
-    if (tok_peek(toks, 0)->type == T_WHILE) {
-        const Token *t = chomp(toks, T_WHILE);
-        NodeIdx condition = parse_expression(toks);
+    if (tok_peek(toks, 0)->type == T_WHILE ||
+        tok_peek(toks, 0)->type == T_LOOP) {
+        const Token *t = tok_next(toks);
+
+        NodeIdx condition = 0;
+        if (t->type == T_WHILE) {
+            condition = parse_expression(toks);
+        }
+
         chomp(toks, T_LBRACE);
         NodeIdx body = parse_list_expression(toks, T_RBRACE);
         chomp(toks, T_RBRACE);
@@ -1414,13 +1424,18 @@ void print_ast(NodeIdx nidx, int depth) {
                     }
                     break;
                 case EXPR_WHILE_LOOP:
-                    printf("while (label %.*s)\n", node->expr.while_loop.label.len, node->expr.while_loop.label.s);
-                    _indent(depth+2);
-                    printf("condition\n");
-                    print_ast(node->expr.while_loop.condition, depth+2);
-                    _indent(depth+2);
-                    printf("body\n");
-                    print_ast(node->expr.while_loop.body, depth+2);
+                    {
+                        bool has_cond = node->expr.while_loop.condition != 0;
+                        printf("%s (label %.*s)\n", has_cond ? "while" : "loop", node->expr.while_loop.label.len, node->expr.while_loop.label.s);
+                        if (has_cond) {
+                            _indent(depth+2);
+                            printf("condition\n");
+                            print_ast(node->expr.while_loop.condition, depth+2);
+                        }
+                        _indent(depth+2);
+                        printf("body\n");
+                        print_ast(node->expr.while_loop.body, depth+2);
+                    }
                     break;
                 case EXPR_IF_ELSE:
                     printf("if\n");

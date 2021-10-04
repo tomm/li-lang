@@ -57,6 +57,9 @@ fn copy_tiles_to_vram() {
     ")
 }
 
+//macro rLCDC { 0xff40 as &u8 }
+//macro SQ(x) { x*x }
+
 fn lcd_off() {
     *(0xff40 as &u8) = 0;
 }
@@ -137,7 +140,7 @@ fn main() {
 
     init_map();
 
-    while 1 {
+    loop {
         wait_vblank();
         blit_map_to_vram();
         life_generation();

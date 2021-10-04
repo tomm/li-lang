@@ -512,12 +512,14 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             break;
         case EXPR_WHILE_LOOP:
             {
-                TypeId cond = typecheck_expr(prog, scope, n->expr.while_loop.condition, U8 /* XXX bool */);
+                if (n->expr.while_loop.condition != 0) {
+                    TypeId cond = typecheck_expr(prog, scope, n->expr.while_loop.condition, U8 /* XXX bool */);
 
-                if (cond != U8 && cond != U16) {
-                    fatal_error(n->start_token, "expected U8 or U16 while condition, but found '%.*s'",
-                            (int)get_type(cond)->name.len,
-                            get_type(cond)->name.s);
+                    if (cond != U8 && cond != U16) {
+                        fatal_error(n->start_token, "expected U8 or U16 while condition, but found '%.*s'",
+                                (int)get_type(cond)->name.len,
+                                get_type(cond)->name.s);
+                    }
                 }
                 label_push(scope, (JumpLabel) {
                     .label = n->expr.while_loop.label,
