@@ -52,7 +52,7 @@ typedef struct AstNode {
                 EXPR_CAST,
                 EXPR_IF_ELSE,
                 EXPR_LOCAL_SCOPE,
-                EXPR_WHILE_LOOP,
+                EXPR_LOOP,
                 EXPR_GOTO,
                 EXPR_RETURN
             } type;
@@ -93,7 +93,8 @@ typedef struct AstNode {
                     Str label;
                     NodeIdx condition; // 0 indicates unconditional `loop`
                     NodeIdx body;
-                } while_loop;
+                    NodeIdx on_next_iter; // 0 indicates no action
+                } loop;
 
                 struct {
                     NodeIdx condition;

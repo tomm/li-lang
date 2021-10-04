@@ -1378,9 +1378,9 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
     }
 }
 
-static Value emit_while_loop(NodeIdx expr, StackFrame frame) {
+static Value emit_loop(NodeIdx expr, StackFrame frame) {
     AstNode *n = get_node(expr);
-    assert(n->type == AST_EXPR && n->expr.type == EXPR_WHILE_LOOP);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_LOOP);
 
     const int jump_label = _local_label_seq++;
 
@@ -1390,14 +1390,23 @@ static Value emit_while_loop(NodeIdx expr, StackFrame frame) {
         .stack_offset = frame.stack_offset,
     });
 
-    __(".l%d_continue:", jump_label);
+    const NodeIdx on_next_iter = n->expr.loop.on_next_iter;
 
-    if (n->expr.while_loop.condition != 0) {
-        Value condition = emit_expression(n->expr.while_loop.condition, frame);
-        emit_truthy_test_to_zflag(get_node(n->expr.while_loop.condition)->start_token, condition);
+    if (on_next_iter) {
+        _i("jp .l%d_cond", jump_label);
+        __(".l%d_continue:", jump_label);
+        emit_expression(n->expr.loop.on_next_iter, frame);
+        __(".l%d_cond:", jump_label);
+    } else {
+        __(".l%d_continue:", jump_label);
+    }
+
+    if (n->expr.loop.condition != 0) {
+        Value condition = emit_expression(n->expr.loop.condition, frame);
+        emit_truthy_test_to_zflag(get_node(n->expr.loop.condition)->start_token, condition);
         _i("jp z, .l%d_break", jump_label);
     }
-    /*Value body =*/ emit_expression(n->expr.while_loop.body, frame);
+    /*Value body =*/ emit_expression(n->expr.loop.body, frame);
     _i("jp .l%d_continue", jump_label);
     __(".l%d_break:", jump_label);
 
@@ -1575,8 +1584,8 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_cast(expr, frame);
         case EXPR_IF_ELSE:
             return emit_if_else(expr, frame);
-        case EXPR_WHILE_LOOP:
-            return emit_while_loop(expr, frame);
+        case EXPR_LOOP:
+            return emit_loop(expr, frame);
         case EXPR_LOCAL_SCOPE:
             return emit_local_scope(expr, frame);
         case EXPR_RETURN:
@@ -1654,11 +1663,14 @@ static int get_max_local_vars_size(NodeIdx n)
         case EXPR_CAST:
             size = max(size, get_max_local_vars_size(node->expr.cast.arg));
             break;
-        case EXPR_WHILE_LOOP:
-            if (node->expr.while_loop.condition) {
-                size = max(size, get_max_local_vars_size(node->expr.while_loop.condition));
+        case EXPR_LOOP:
+            if (node->expr.loop.condition) {
+                size = max(size, get_max_local_vars_size(node->expr.loop.condition));
             }
-            size = max(size, get_max_local_vars_size(node->expr.while_loop.body));
+            size = max(size, get_max_local_vars_size(node->expr.loop.body));
+            if (node->expr.loop.on_next_iter) {
+                size = max(size, get_max_local_vars_size(node->expr.loop.on_next_iter));
+            }
             break;
         case EXPR_GOTO:
             break;

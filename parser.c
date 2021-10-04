@@ -167,6 +167,7 @@ static bool check(TokenCursor *toks, enum TokType type) {
 static TypeId parse_type(TokenCursor *toks);
 static NodeIdx parse_expression(TokenCursor *toks);
 static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator);
+static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator, bool skip_var_keyword, NodeIdx scoped_expr);
 
 static NodeIdx parse_asm_expression(TokenCursor *toks) {
     // 'asm' identifier already chomped
@@ -710,21 +711,65 @@ static NodeIdx parse_conditional_expression(TokenCursor *toks) {
         NodeIdx body = parse_list_expression(toks, T_RBRACE);
         chomp(toks, T_RBRACE);
 
-        NodeIdx while_loop = alloc_node();
-        set_node(while_loop, &(AstNode) {
+        NodeIdx loop = alloc_node();
+        set_node(loop, &(AstNode) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_WHILE_LOOP,
-                .while_loop = {
+                .type = EXPR_LOOP,
+                .loop = {
                     .label = label,
                     .condition = condition,
                     .body = body,
+                    .on_next_iter = 0
                 }
             }
         });
 
-        return while_loop;
+        return loop;
+    } else if (tok_peek(toks, 0)->type == T_FOR) {
+        const Token *t = chomp(toks, T_FOR);
+
+        NodeIdx loop = alloc_node();
+        // to keep assertions in parse_localscope_expression happy
+        set_node(loop, &(AstNode) { .type = AST_EXPR });
+
+        NodeIdx loop_scope = 0;
+        if (tok_peek(toks, 0)->type != T_SEMICOLON) {
+            loop_scope = parse_localscope_expression(toks, T_RBRACE, true, loop);
+        }
+        chomp(toks, T_SEMICOLON);
+
+        NodeIdx condition = 0;
+        if (tok_peek(toks, 0)->type != T_SEMICOLON) {
+            condition = parse_expression(toks);
+        }
+        chomp(toks, T_SEMICOLON);
+
+        NodeIdx on_next_iter = 0;
+        if (tok_peek(toks, 0)->type != T_SEMICOLON) {
+            on_next_iter = parse_expression(toks);
+        }
+
+        chomp(toks, T_LBRACE);
+        NodeIdx body = parse_list_expression(toks, T_RBRACE);
+        chomp(toks, T_RBRACE);
+
+        set_node(loop, &(AstNode) {
+            .type = AST_EXPR,
+            .start_token = t,
+            .expr = {
+                .type = EXPR_LOOP,
+                .loop = {
+                    .label = label,
+                    .condition = condition,
+                    .body = body,
+                    .on_next_iter = on_next_iter
+                }
+            }
+        });
+
+        return loop_scope ? loop_scope : loop;
     } else if (tok_peek(toks, 0)->type == T_IF) {
         const Token *t = chomp(toks, T_IF);
 
@@ -893,7 +938,11 @@ static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeId
     return list;
 }
 
-static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator, bool skip_var_keyword) {
+/**
+ * if `scoped_expr` != 0 then this NodeIdx will be used as the localscope scoped_expr,
+ * rather than parsing an expression there.
+ */
+static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator, bool skip_var_keyword, NodeIdx scoped_expr) {
     if (tok_peek(toks, 0)->type == T_VAR || skip_var_keyword) {
         const Token *start_token = tok_peek(toks, 0);
         if (!skip_var_keyword) chomp(toks, T_VAR);
@@ -909,11 +958,10 @@ static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType termi
             value = parse_expression(toks);
         }
 
-        NodeIdx scoped_expr = 0;
         if (tok_peek(toks, 0)->type == T_COMMA) {
             chomp(toks, T_COMMA);
-            scoped_expr = parse_localscope_expression(toks, terminator, true);
-        } else {
+            scoped_expr = parse_localscope_expression(toks, terminator, true, scoped_expr);
+        } else if (scoped_expr == 0) {
             chomp(toks, T_SEMICOLON);
             scoped_expr = parse_list_expression(toks, terminator);
         }
@@ -949,7 +997,7 @@ static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator)
     bool is_void = false;
 
     while (tok_peek(toks, 0)->type != terminator) {
-        ChildCursor_append(&exprs, parse_localscope_expression(toks, terminator, false));
+        ChildCursor_append(&exprs, parse_localscope_expression(toks, terminator, false, 0));
         is_void = false;
         if (tok_peek(toks, 0)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
@@ -1423,18 +1471,18 @@ void print_ast(NodeIdx nidx, int depth) {
                             break;
                     }
                     break;
-                case EXPR_WHILE_LOOP:
+                case EXPR_LOOP:
                     {
-                        bool has_cond = node->expr.while_loop.condition != 0;
-                        printf("%s (label %.*s)\n", has_cond ? "while" : "loop", node->expr.while_loop.label.len, node->expr.while_loop.label.s);
+                        bool has_cond = node->expr.loop.condition != 0;
+                        printf("%s (label %.*s)\n", has_cond ? "while" : "loop", node->expr.loop.label.len, node->expr.loop.label.s);
                         if (has_cond) {
                             _indent(depth+2);
                             printf("condition\n");
-                            print_ast(node->expr.while_loop.condition, depth+2);
+                            print_ast(node->expr.loop.condition, depth+2);
                         }
                         _indent(depth+2);
                         printf("body\n");
-                        print_ast(node->expr.while_loop.body, depth+2);
+                        print_ast(node->expr.loop.body, depth+2);
                     }
                     break;
                 case EXPR_IF_ELSE:

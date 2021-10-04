@@ -297,6 +297,7 @@ fn main() {
     test_ptr_arith();
     test_ptr_cast();
     test_loop();
+    test_for();
     test_while();
     test_while_break();
     test_array_as_value();
@@ -525,6 +526,42 @@ fn test_local_scope(a: u8) -> u8 {
     expect(local_scope_argpass(l1) == 4);
 
     l3[1] as u8
+}
+
+fn test_for() {
+    var i=0u8;
+
+    for j=0u8, k:u8=2; j<8; j+=1 {
+        i = j + k;
+    };
+    expect(i == 9);
+
+    i=0;
+    for ;;i+=1 {
+        if i==4 { break }
+    };
+    expect(i == 4);
+
+    i=0;
+    for ;i<3;{} {
+        i+=1
+    };
+    expect(i == 3);
+
+    i=0;
+    for j=2u8;;() {
+        i=2*j;
+        j+=1;
+        if j>4 { break }
+    };
+    expect(i==8);
+
+    i=0;
+    for ;;() {
+        i+=1;
+        if i==6 { break }
+    };
+    expect(i==6);
 }
 
 fn test_loop() {

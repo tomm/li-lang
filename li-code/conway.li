@@ -27,16 +27,10 @@ fn gen_tile(x: u8, y: u8) {
 }
 
 fn life_generation() {
-    var x: u8,
-        y = 0u8;
-
-    while (y < 16) {
-        x = 0;
-        while (x < 16) {
+    for y=0u8; y<16; y+=1 {
+        for x=0u8; x<16; x+=1 {
             gen_tile(x, y);
-            x += 1;
         };
-        y += 1;
     };
 
     // copy map2 back to map
@@ -88,15 +82,10 @@ fn rand() -> u8 {
 }
 
 fn init_map() {
-    var x=0u16, y=0u16;
-
-    while y<16 {
-        x = 0;
-        while x<16 {
+    for y=0u8; y<16; y+=1 {
+        for x=0u8; x<16; x+=1 {
             map[y][x] = if rand() & 1 == 0 { 0 } else { 1 };
-            x += 1;
         };
-        y += 1;
     }
 }
 

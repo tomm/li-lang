@@ -1,5 +1,4 @@
 * unused number literal causes backend crash. ie `1;`
-* for loop
 * do while loop
 * switch
 * real returning arrays by value
