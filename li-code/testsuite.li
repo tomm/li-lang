@@ -368,11 +368,11 @@ fn test_return(v: u8) -> u8 {
 }
 
 // can tell type, or infer from literal
-const myconst_a: [u8; 12] = "Hello world";
-const myconst_b = 2u16;
-// for arrays, either type must be given, or explicit in literal
-const myconst_c = [[1u8,2u8,4u8,8u8],[2u8,3u8,4u8,9u8]];
-const myconst_d: [[u8; 4]; 2] = [[1,2,4,8],[2,3,4,9]];
+const myconst_a: [u8; 12] = "Hello world",
+      myconst_b = 2u16,
+      // for arrays, either type must be given, or explicit in literal
+      myconst_c = [[1u8,2u8,4u8,8u8],[2u8,3u8,4u8,9u8]],
+      myconst_d: [[u8; 4]; 2] = [[1,2,4,8],[2,3,4,9]];
 
 fn test_const_globals() {
     expect(myconst_a[0] == 'H');

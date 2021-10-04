@@ -2,7 +2,6 @@ include "li-code/softmath.li";
 include "li-code/nonstdlib.li";
 
 var friends: u8,
-    randSeed: u16,
     map: [[u8; 16]; 16],
     map2: [[u8; 16]; 16];
 
@@ -40,16 +39,8 @@ fn life_generation() {
         y += 1;
     };
 
-    y = 0;
     // copy map2 back to map
-    while (y < 16) {
-        x = 0;
-        while (x < 16) {
-            map[x][y] = map2[x][y];
-            x += 1;
-        };
-        y += 1;
-    };
+    memcpy(&map as &u8, &map2 as &u8, 16*16);
 }
 
 fn copy_tiles_to_vram() {
@@ -74,208 +65,87 @@ fn lcd_on() {
     *(0xff40 as &u8) = 0x81; /* i want binary literals... */
 }
 
-fn main() {
-    /*
-        di
-        ; enable gamepad interrupt
-        ld a, %10000
-        ld [$ffff], a
-    */
-    // turn off sound
-    *(0xff26 as &u8) = 0;
-
+fn wait_vblank() {
     asm("
-rNR52 equ $ff26 ; enable/disable sound (and channels)
-rLCDC equ $ff40
-rSTAT equ $ff41
-rSCY equ $ff42 ; bg y scroll
-rSCX equ $ff43 ; bg x scroll
-rLY equ $ff44 ; current LCD scanout line (read)
-rBGP equ $ff47 ; window palette data
+    .loop:
+        ld a, [$ff44]
+        cp a, 144
+        jr c, .loop
+        cp a, 151
+        jr nc, .loop
+    ");
+}
 
-        di
+var rand_seed: u16;
+fn rand() -> u8 {
+    // 128 + 8 + 1
+    rand_seed = (rand_seed * 137u16) + 1u16;
+    // return high byte
+    *((&rand_seed as &u8) + 1u16)
+}
 
+fn init_map() {
+    var x=0u16, y=0u16;
 
-        ; turn off sound
-        xor a
-        ld [rNR52], a
+    while y<16 {
+        x = 0;
+        while x<16 {
+            map[y][x] = if rand() & 1 == 0 { 0 } else { 1 };
+            x += 1;
+        };
+        y += 1;
+    }
+}
 
-        ; stack to HRAM (since we are wiping wram)
-        ld sp, $fffe
-
-        ; wipe wram
-        ld hl, $c000
-        ld de, $e000-$c000
-        xor a
-        call Memset
-
-        ; stack to top of wram
-        ld sp, $e000
-
-        ; setup video stuff
-        call WaitLY144
-        call lcd_off
-            ; wipe vram
-            ld hl, $8000
-            ld de, $a000-$8000
-            xor a
-            call Memset
-
-            ; copy tile data to vram
-            call copy_tiles_to_vram
-            ; set palette (4 greyscale)
-            ld a, %11100100
-            ld [rBGP], a
-
-            ; set x,y background scroll
-            xor a
-            ld [rSCY], a
-            ld [rSCX], a
-        call lcd_on
-
-        ;di
-        ; wait for keypress to collect Rand entropy
-        ;halt
-        ;nop
-
-        ; wait for a button press
-        ld hl, randSeed
-        ld [hl], 1
-        call InitMap
-        jp MainLoop
-
-MainLoop:
-        call WaitLY144
-        call BlitMap
-        call life_generation
-
-        jr MainLoop
-
-BlitMap:
+fn blit_map_to_vram() {
+    asm("
         ld de, map
 
         FOR OFFSET, 0, 32*20, 32
             ; first make sure we are still in vblank, and
             ; if not wait for the next one
-        .waitvblank\@
-            ld a, [rLY]
-            cp 144
-            jr c, .waitvblank\@
-            cp 152
-            jr nc, .waitvblank\@
-
+            call wait_vblank
             ld hl, $9800+OFFSET+34
-            
             REPT 16
                 ld a, [de]
                 ld [hl+], a
                 inc de
             ENDR
         ENDR
+    ");
+}
 
-        ret
-        
-InitMap:
-    ; fn ()
-        ld b, 0 ; 16*16=256 ;)
-        ld hl, map
+fn main() {
+    // turn off sound
+    *(0xff26 as &u8) = 0;
 
-    .loop
-        push bc
-        ld a, 0
-        ld [hl], a
-        push hl
-        call Rand
-        pop hl
-        and a, 1
-        jr z, .skip
-        ld a, 1
-        ld [hl], a
-    .skip
-        inc hl
-        pop bc
+    wait_vblank();
+    lcd_off();
+    {
+        // wipe VRAM
+        memset(0x8000 as &u8, 0, 0xa000 - 0x8000);
+        copy_tiles_to_vram();
+        // set palette (4 greyscale)
+        *(0xff47 as &u8) = 0xe4;
+        // set x,y background scroll
+        *(0xff42 as &u8) = 0;
+        *(0xff43 as &u8) = 0;
+    };
+    lcd_on();
 
-        dec b
-        jr nz, .loop
+    rand_seed = 1;
 
-        ret
-        
+    init_map();
 
-GamepadInterrupt:
-    ; fn ()
-        push af
+    while 1 {
+        wait_vblank();
+        blit_map_to_vram();
+        life_generation();
+    }
+}
 
-        ; Get entropy from gamepad press timings:
-        ; When player presses controls, write value of ~16khz counter
-        ; to the low byte of randSeed
-        ld a, [$ff04]
-        ld [randSeed], a
-
-        pop af
-        reti
-
-WaitLY144:
-    ; fn ()
-        ; why have both this and WaitNextVBlank? This one works without interrupts enabled
-        ; which screen line is being drawn?
-        ld a, [rLY]
-        cp a, 144  ; in vblank?
-        jr nz, WaitLY144
-        ret
-
-Memcpy:
-    ; fn (hl: dest, de: src, bc: length)
-        ld a, [de]
-        ld [hl+], a
-        inc de
-        dec bc
-        ld a, b ; check if count is zero (dec does not set flags)
-        or c
-        jr nz, Memcpy
-        ret
-
-Memset:
-    ; fn (hl: dest, de: length, a: value)
-        ld b, a
-    .loop
-        ld [hl+], a
-        dec de
-        ld a, d
-        or a, e
-        ld a, b
-        jp nz, .loop
-        ret
-
-Rand:
-    ; fn () -> (a: random number)
-    ; Linear congruential generator { seed = ((seed * mult) + incr) & 0xffff }
-    ; mult=137 (prime, 128+8+1), incr=1
-        ld a, [randSeed]
-        ld l, a
-        ld a, [randSeed+1]
-        ld h, a
-        ; bc = seed*1
-        ld b, h
-        ld c, l
-        add hl, hl
-        add hl, hl
-        add hl, hl
-        ; de = seed*8
-        ld d, h
-        ld e, l
-        add hl, hl
-        add hl, hl
-        add hl, hl
-        add hl, hl ; seed*128
-        add hl, de
-        add hl, bc ; seed*137
-        inc hl
-        ld a, l
-        ld [randSeed], a
-        ld a, h
-        ld [randSeed+1], a
-        ret
-
+// special RGBASM gameboy sprite literals
+asm("
 tiles:
         dw `00000000
         dw `00000000
@@ -295,6 +165,4 @@ tiles:
         dw `33333333
         dw `33333333
 tiles_end:
-
-            ")
-}
+");

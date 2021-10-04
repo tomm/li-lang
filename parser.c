@@ -817,9 +817,9 @@ static NodeIdx parse_expression(TokenCursor *toks) {
 }
 
 /*
- * Insert an assignment builting at the beginning of `list_expr`,
+ * Insert an assignment builtin at the beginning of `scoped_expr`,
  * assigning `ident` = `value`
- * Returns new NodeIdx
+ * Returns NodeIdx of modified scoped_expr
  */
 static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeIdx value) {
     assert(ident->type == T_IDENT);
@@ -866,17 +866,17 @@ static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeId
 
     // insert the assignment into the list expression
     NodeIdx list = alloc_node();
-    ChildCursor args2 = ChildCursor_init();
-    ChildCursor_append(&args2, assignment);
-    ChildCursor_append(&args2, void_lit);
-    ChildCursor_append(&args2, scoped_expr);
+    ChildCursor args = ChildCursor_init();
+    ChildCursor_append(&args, assignment);
+    ChildCursor_append(&args, void_lit);
+    ChildCursor_append(&args, scoped_expr);
     set_node(list, &(AstNode) {
         .type = AST_EXPR,
         .start_token = ident,
         .expr = {
             .type = EXPR_LIST,
             .list = {
-                .first_child = args2.first_child
+                .first_child = args.first_child
             }
         }
     });

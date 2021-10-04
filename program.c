@@ -323,7 +323,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                 }
                 n->expr.goto_.target = l->node;
             }
-            t = VOID;
+            t = NEVER;
             break;
         case EXPR_ASM:
             t = VOID;

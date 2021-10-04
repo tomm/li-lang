@@ -67,7 +67,14 @@ static void emit_boilerplate() {
     __("SECTION \"Code\", ROM0[$150]");
     __("__start:");
     __("        di");
-    __("        ld sp, $e000 ; top of WRAM");
+
+    __("        ld sp, $fffe  ; stack to HRAM (since we are wiping wram)");
+    __("        ld hl, $c000");
+    __("        ld de, $e000-$c000");
+    __("        xor a");
+    __("        call __memset");
+
+    __("        ld sp, $e000 ; stack to top of WRAM");
     __("        call main");
     __("    .loop");
     __("        halt");
@@ -83,6 +90,18 @@ static void emit_boilerplate() {
     __("        ld a, b");
     __("        or c");
     __("        jr nz, __memcpy");
+    __("        ret");
+
+    __("__memset:");
+    __("        ; fn (hl: dest, de: length, a: value)");
+    __("        ld b, a");
+    __("    .loop");
+    __("        ld [hl+], a");
+    __("        dec de");
+    __("        ld a, d");
+    __("        or a, e");
+    __("        ld a, b");
+    __("        jp nz, .loop");
     __("        ret");
 }
 
