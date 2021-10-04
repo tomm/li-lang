@@ -1,10 +1,12 @@
+* many compile errors still need to be moved from backend to frontend
+* function pointers
+* structs
+* compile-time constants (macro rLCDC { 0xff40 as &u8 })
 * unused number literal causes backend crash. ie `1;`
 * do while loop
 * switch
 * real returning arrays by value
-* structs
 * bool type
-* function pointers
 * int + &T
 * &T - &T
 * enforce constness
@@ -16,3 +18,4 @@
 missing operators:
   ++, -- (but maybe not)
   sizeof
+  lenof

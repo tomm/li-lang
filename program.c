@@ -548,6 +548,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     n->expr.local_scope.var_type = typecheck_expr(prog, scope, n->expr.local_scope.value, TYPE_UNKNOWN);
                 }
 
+                if (scope_lookup(scope, n->expr.local_scope.var_name) != NULL) {
+                    fatal_error(n->start_token, "Local variable called '%.*s' already defined",
+                            n->expr.local_scope.var_name.len,
+                            n->expr.local_scope.var_name.s);
+                }
                 scope_push(scope, (Variable) {
                     .name = n->expr.local_scope.var_name,
                     .type = n->expr.local_scope.var_type

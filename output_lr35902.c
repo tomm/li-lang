@@ -189,8 +189,7 @@ static StackVarIdx alloc_stack_var(const Token *t, StackFrame frame, StackVar v)
         vec_push(&_stack_vars, &v);
         return idx;
     } else {
-        fatal_error(t, "Local variable called '%.*s' already defined",
-                (int)v.ident.len, v.ident.s);
+        assert(false);
     }
 }
 
