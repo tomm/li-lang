@@ -302,12 +302,6 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                     return expr;
                 }
             }
-        case T_LPAREN:
-            {
-                NodeIdx expr = parse_list_expression(toks, T_RPAREN);
-                chomp(toks, T_RPAREN);
-                return expr;
-            }
         case T_LBRACE:
             {
                 NodeIdx expr = parse_list_expression(toks, T_RBRACE);
@@ -418,10 +412,47 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
             });
         }
 
-        // array to pointer cast (&x[0] == x$)
-            /*
-        else if (start_token->type == T_DOLLAR) {
-            NodeIdx child = n;
+        else if (start_token->type == T_HASH) {
+            chomp(toks, T_HASH);
+            NodeIdx arg1 = n;
+            n = alloc_node();
+            set_node(n, &(AstNode) {
+                .type = AST_EXPR,
+                .start_token = start_token,
+                .expr = {
+                    .type = EXPR_BUILTIN,
+                    .builtin = {
+                        .op = BUILTIN_UNARY_DEREF,
+                        .arg1 = arg1,
+                        .arg2 = 0
+                    }
+                }
+            });
+        }
+
+        else if (start_token->type == T_ATSIGN) {
+            chomp(toks, T_ATSIGN);
+            NodeIdx arg1 = n;
+            n = alloc_node();
+            set_node(n, &(AstNode) {
+                .type = AST_EXPR,
+                .start_token = start_token,
+                .expr = {
+                    .type = EXPR_BUILTIN,
+                    .builtin = {
+                        .op = BUILTIN_UNARY_ADDRESSOF,
+                        .arg1 = arg1,
+                        .arg2 = 0
+                    }
+                }
+            });
+        }
+
+        else if (start_token->type == T_AS) {
+            chomp(toks, T_AS);
+            TypeId to_type = parse_type(toks);
+
+            NodeIdx arg = n;
             n = alloc_node();
             set_node(n, &(AstNode) {
                 .type = AST_EXPR,
@@ -429,13 +460,13 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                 .expr = {
                     .type = EXPR_CAST,
                     .cast = {
-                        .arg = child,
-                        .to_type = 0, // filled in during type check
+                        .arg = arg,
+                        .to_type = to_type
                     }
                 }
             });
         }
-            */
+
         else {
             return n;
         }
@@ -446,10 +477,8 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
     const Token *t = tok_peek(toks, 0);
 
     if ((t->type == T_MINUS) ||
-        (t->type == T_ASTERISK) ||
         (t->type == T_TILDE) ||
-        (t->type == T_EXCLAMATION) ||
-        (t->type == T_AMPERSAND)) {
+        (t->type == T_EXCLAMATION)) {
         tok_next(toks);
         NodeIdx arg1 = parse_unary_expression(toks);
 
@@ -466,10 +495,6 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
                         ? BUILTIN_UNARY_LOGICAL_NOT
                         : t->type == T_TILDE
                         ? BUILTIN_UNARY_BITNOT
-                        : t->type == T_ASTERISK
-                        ? BUILTIN_UNARY_DEREF
-                        : t->type == T_AMPERSAND
-                        ? BUILTIN_UNARY_ADDRESSOF
                         : (assert(false), 0),
                     .arg1 = arg1,
                     .arg2 = 0
@@ -482,40 +507,15 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
     }
 }
 
-static NodeIdx parse_cast_expression(TokenCursor *toks) {
-    NodeIdx n = parse_unary_expression(toks);
-
-    while (tok_peek(toks, 0)->type == T_AS) {
-        const Token *start_token = chomp(toks, T_AS);
-        TypeId to_type = parse_type(toks);
-
-        NodeIdx child = n;
-        n = alloc_node();
-        set_node(n, &(AstNode) {
-            .type = AST_EXPR,
-            .start_token = start_token,
-            .expr = {
-                .type = EXPR_CAST,
-                .cast = {
-                    .arg = child,
-                    .to_type = to_type
-                }
-            }
-        });
-    }
-
-    return n;
-}
-
 static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
-    NodeIdx n = parse_cast_expression(toks);
+    NodeIdx n = parse_unary_expression(toks);
 
     while (tok_peek(toks, 0)->type == T_ASTERISK ||
            tok_peek(toks, 0)->type == T_SLASH ||
            tok_peek(toks, 0)->type == T_PERCENT) {
         const Token *t = tok_next(toks);
         NodeIdx arg1 = n;
-        NodeIdx arg2 = parse_cast_expression(toks);
+        NodeIdx arg2 = parse_unary_expression(toks);
 
         n = alloc_node();
         set_node(n, &(AstNode) {
@@ -962,7 +962,6 @@ static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType termi
             chomp(toks, T_COMMA);
             scoped_expr = parse_localscope_expression(toks, terminator, true, scoped_expr);
         } else if (scoped_expr == 0) {
-            chomp(toks, T_SEMICOLON);
             scoped_expr = parse_list_expression(toks, terminator);
         }
 
@@ -1002,8 +1001,8 @@ static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator)
         if (tok_peek(toks, 0)->type == T_SEMICOLON) {
             chomp(toks, T_SEMICOLON);
             is_void = true;
-        } else {
-            break;
+        //} else {
+            //break;
         }
     }
 
@@ -1048,7 +1047,7 @@ static TypeId parse_type(TokenCursor *toks) {
         }
         return type;
     }
-    else if (t->type == T_AMPERSAND) {
+    else if (t->type == T_ATSIGN) {
         // pointer
         TypeId ref = parse_type(toks);
         return make_ptr_type(ref);
@@ -1114,7 +1113,6 @@ static void parse_var_def(TokenCursor *toks, ChildCursor *module_children, bool 
             continue;
         }
         else {
-            chomp(toks, T_SEMICOLON);
             break;
         }
     }
@@ -1282,10 +1280,8 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
             case T_IDENT:
                 if (Str_eq(t->ident, "asm")) {
                     ChildCursor_append(children, parse_asm_expression(toks));
-                    chomp(toks, T_SEMICOLON);
                 } else if (Str_eq(t->ident, "include")) {
                     const Token *filename = chomp(toks, T_LITERAL_STR);
-                    chomp(toks, T_SEMICOLON);
                     parse_include(children, filename);
                 } else {
                     goto error;

@@ -1,108 +1,109 @@
-include "li-code/softmath.li"; // needed for integer multiply
-include "li-code/gb_console.li";
+include "li-code/softmath.li" // needed for integer multiply
+include "li-code/gb_console.li"
 
 fn main() {
-    console_init();
-    puts("LI BENCHMARK\n\n" as &u8);
+    console_init()
+    puts("LI BENCHMARK\n\n" as @u8)
 
-    elapsed_vblanks = 0;
-    randSeed = 0;
+    elapsed_vblanks = 0
+    randSeed = 0
 
-    enable_vblank();
+    enable_vblank()
 
     // Benchmark software multiply & divide
     {
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
+        var i = 0u16,
+            elapsed = elapsed_vblanks
         while i < 2000 {
-            i += 1;
-            benchmark_softmath(0xfedc, 0x1234);
-        };
-        elapsed = elapsed_vblanks - elapsed;
-        puts("SOFTMULDIV  $" as &u8);
-        puthex(0x6900 / elapsed);
-    };
-    putchar(10); // XXX want '\n'
+            i += 1
+            benchmark_softmath(0xfedc, 0x1234)
+        }
+        elapsed = elapsed_vblanks - elapsed
+        puts("SOFTMULDIV  $" as @u8)
+        puthex(0x6900 / elapsed)
+    }
+    putchar(10) // XXX want '\n'
     // Benchmark miscellaneous 8-bit arith
     {
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
+        var i = 0u16,
+            elapsed = elapsed_vblanks
         while i < 10000 {
-            i += 1;
-            benchmark_u8_arith(i as u8);
-        };
-        elapsed = elapsed_vblanks - elapsed;
-        puts("U8 ARITH    $" as &u8);
-        puthex(0x6c00 / elapsed);
-    };
-    putchar(10); // XXX want '\n'
+            i += 1
+            benchmark_u8_arith(i as u8)
+        }
+        elapsed = elapsed_vblanks - elapsed
+        puts("U8 ARITH    $" as @u8)
+        puthex(0x6c00 / elapsed)
+    }
+    putchar(10) // XXX want '\n'
     // Benchmark miscellaneous 16-bit arith
     {
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
+        var i = 0u16,
+            elapsed = elapsed_vblanks
         while i < 10000 {
-            i += 1;
-            benchmark_u16_arith(i);
-        };
-        elapsed = elapsed_vblanks - elapsed;
-        puts("U16 ARITH   $" as &u8);
-        puthex(0x7f00 / elapsed);
-    };
-    putchar(10); // XXX want '\n'
+            i += 1
+            benchmark_u16_arith(i)
+        }
+        elapsed = elapsed_vblanks - elapsed
+        puts("U16 ARITH   $" as @u8)
+        puthex(0x7f00 / elapsed)
+    }
+    putchar(10) // XXX want '\n'
     // Benchmark logic ops
     {
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
+        var i = 0u16,
+            elapsed = elapsed_vblanks
         while i < 10000 {
-            i += 1;
-            benchmark_logic_ops(i as u8, !(i as u8));
-        };
-        elapsed = elapsed_vblanks - elapsed;
-        puts("LOGIC OPS   $" as &u8);
-        puthex(0x6400 / elapsed);
-    };
-    putchar(10);
+            i += 1
+            benchmark_logic_ops(i as u8, !{i as u8})
+        }
+        elapsed = elapsed_vblanks - elapsed
+        puts("LOGIC OPS   $" as @u8)
+        puthex(0x6400 / elapsed)
+    }
+    putchar(10)
     // Benchmark array ops
     {
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
-        var a: [[u8; 3]; 3];
-        var b: [[u8; 3]; 3];
+        var i = 0u16,
+            elapsed = elapsed_vblanks,
+            a: [[u8; 3]; 3],
+            b: [[u8; 3]; 3]
+
         while i < 500 {
-            i += 1;
-            benchmark_array_ops(&a, &b);
-        };
-        elapsed = elapsed_vblanks - elapsed;
-        puts("ARRAYS      $" as &u8);
-        puthex(0x7f00 / elapsed);
-    };
-    putchar(10); // XXX want '\n'
+            i += 1
+            benchmark_array_ops(a@, b@)
+        }
+        elapsed = elapsed_vblanks - elapsed
+        puts("ARRAYS      $" as @u8)
+        puthex(0x7f00 / elapsed)
+    }
+    putchar(10) // XXX want '\n'
     // Benchmark 16-bit rand() implementation
     {
         // asm implementation takes $44 vblanks for 10000 iters
         // naive implementation with software mul and >>8 takes $fa
         // implementation with software mul and ptr arith takes $cb
-        var i = 0u16;
-        var elapsed = elapsed_vblanks;
+        var i = 0u16,
+            elapsed = elapsed_vblanks
         while i < 5000 {
-            i += 1;
-            rand();
-        };
-        elapsed = elapsed_vblanks - elapsed;
-
-        puts("16-BIT RAND $" as &u8);
-        if rand() == 0x75 {
-            puthex(0x6500 / elapsed);
-        } else {
-            puts("ERROR" as &u8);
+            i += 1
+            rand()
         }
-    };
-    putchar(10);
-    puts("DONE" as &u8);
+        elapsed = elapsed_vblanks - elapsed
+
+        puts("16-BIT RAND $" as @u8)
+        if rand() == 0x75 {
+            puthex(0x6500 / elapsed)
+        } else {
+            puts("ERROR" as @u8)
+        }
+    }
+    putchar(10)
+    puts("DONE" as @u8)
 }
 
 fn benchmark_softmath(a: u16, b: u16) -> u16 {
-    (a*b) + (a/b) + (a as u8 * b as u8) as u16 + (a as u8 / b as u8) as u16
+    {a*b} + {a/b} + {a as u8 * b as u8} as u16 + {a as u8 / b as u8} as u16
 }
 fn benchmark_u16_arith(a: u16) -> u16 {
     -2u16 + a + a - 1234 >> 1 & 0xf0f0 | a
@@ -111,24 +112,25 @@ fn benchmark_u8_arith(a: u8) -> u8 {
     -2 + a + a - 34 >> 1 & 0xf0 | a
 }
 fn benchmark_logic_ops(a: u8, b: u8) -> u8 {
-    !a || (a && b) || b
+    !a || {a && b} || b
 }
-fn benchmark_array_ops(a: &[[u8; 3]; 3], b: &[[u8; 3]; 3]) {
+fn benchmark_array_ops(a: @[[u8; 3]; 3], b: @[[u8; 3]; 3]) {
     // matrix transpose
-    (*b)[0][0] = (*a)[0][0];
-    (*b)[1][0] = (*a)[0][1];
-    (*b)[2][0] = (*a)[0][2];
+    b#[0][0] = a#[0][0]
+    b#[1][0] = a#[0][1]
+    b#[2][0] = a#[0][2]
 
-    (*b)[0][1] = (*a)[1][0];
-    (*b)[1][1] = (*a)[1][1];
-    (*b)[2][1] = (*a)[1][2];
+    b#[0][1] = a#[1][0]
+    b#[1][1] = a#[1][1]
+    b#[2][1] = a#[1][2]
 
-    (*b)[0][2] = (*a)[2][0];
-    (*b)[1][2] = (*a)[2][1];
-    (*b)[2][2] = (*a)[2][2];
+    b#[0][2] = a#[2][0]
+    b#[1][2] = a#[2][1]
+    b#[2][2] = a#[2][2]
+    {}
 }
 
-var elapsed_vblanks: u16;
+var elapsed_vblanks: u16
 
 fn on_vblank() {
     asm("
@@ -137,25 +139,25 @@ fn on_vblank() {
         push de
         push hl
 
-    ");
-    elapsed_vblanks = elapsed_vblanks + 1u16;
+    ")
+    elapsed_vblanks = elapsed_vblanks + 1u16
     asm("
         pop hl
         pop de
         pop bc
         pop af
-    ");
+    ")
 }
 
 fn enable_vblank() {
-    *(0xffff as &u8) = 1;
-    asm("ei");
+    0xffff as @u8 #= 1
+    asm("ei")
 }
 
-var randSeed: u16;
+var randSeed: u16
 fn rand() -> u8 {
     // 128 + 8 + 1
-    randSeed = (randSeed * 137u16) + 1u16;
+    randSeed = {randSeed * 137} + 1
     // return high byte
-    *((&randSeed as &u8) + 1u16)
+    {randSeed@ as @u8 + 1}#
 }

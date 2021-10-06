@@ -1,17 +1,17 @@
 // hehe, nonstdlib ;)
-fn memcpy(dest: &u8, src: &u8, len: u16) {
-    while (len != 0) {
-        *dest = *src;
-        dest += 1;
-        src += 1;
-        len -= 1;
+fn memcpy(dest: @u8, src: @u8, len: u16) {
+    while len != 0 {
+        dest# = src#
+        dest += 1
+        src += 1
+        len -= 1
     }
 }
 
-fn memset(dest: &u8, val: u8, n: u16) {
+fn memset(dest: @u8, val: u8, n: u16) {
     while val > 0 {
-        *dest = 0;
-        dest += 1;
-        val -= 1;
+        dest# = 0
+        dest += 1
+        val -= 1
     }
 }

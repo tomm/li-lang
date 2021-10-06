@@ -1,10 +1,10 @@
-fn ascii_font_start() -> &u8 {
+fn ascii_font_start() -> @u8 {
     asm("
         ld hl, tiles
         ret
     ");
     // dummy
-    0 as &u8
+    0 as @u8
 }
 fn ascii_font_len() -> u16 {
     asm("
@@ -356,4 +356,4 @@ tiles:
         dw `03333330
         dw `00000000
 tiles_end:
-");
+")

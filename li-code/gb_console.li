@@ -1,9 +1,9 @@
-include "li-code/ascii_font.li";
-include "li-code/nonstdlib.li";
+include "li-code/ascii_font.li"
+include "li-code/nonstdlib.li"
 
-var console_bg: &[[u8; 32]; 32];
-var console_x: u8;
-var console_y: u8;
+var console_bg: @[[u8; 32]; 32]
+var console_x: u8
+var console_y: u8
 
 fn console_goto(x: u8, y: u8) {
     console_x = x;
@@ -52,34 +52,35 @@ fn puthex(v: u16) {
 }
 
 fn putchar(c: u8) {
-    wait_vblank();
+    wait_vblank()
 
-    if (c == 10) {
-        console_x = 0;
-        console_y += 1;
+    if c == 10 {
+        console_x = 0
+        console_y += 1
     } else {
-        (*console_bg)[console_y][console_x] = c;
-        console_x += 1;
-    };
-    if (console_x == 20) {
-        console_x = 0;
-        console_y += 1;
+        console_bg#[console_y][console_x] = c
+        console_x += 1
     }
+    if console_x == 20 {
+        console_x = 0
+        console_y += 1
+    }
+    {}
 }
 
-fn puts(s: &u8) {
-    while ((*s) != 0) {
-        putchar(*s);
-        s += 1;
+fn puts(s: @u8) {
+    while s# != 0 {
+        putchar(s#)
+        s += 1
     }
 }
 
 fn lcd_off() {
-    *(0xff40 as &u8) = 0;
+    0xff40 as @u8 #= 0;
 }
 
 fn lcd_on() {
-    *(0xff40 as &u8) = 0x81;
+    0xff40 as @u8 #= 0x81;
 }
 
 fn wait_vblank() {
@@ -90,30 +91,30 @@ fn wait_vblank() {
         jr c, .loop
         cp a, 151
         jr nc, .loop
-    ");
+    ")
 }
 
 
 fn console_init() {
     // messy. want constexpr XXX
-    console_bg = 0x9800 as &[[u8;32];32];
-    console_x = 0;
-    console_y = 0;
+    console_bg = 0x9800 as @[[u8;32];32]
+    console_x = 0
+    console_y = 0
 
-    wait_vblank();
-    lcd_off();
+    wait_vblank()
+    lcd_off()
     {
         // wipe vram
-        memset(0x8000 as &u8, 0, 0xa000-0x8000);
+        memset(0x8000 as @u8, 0, 0xa000-0x8000)
 
         // copy tile data to vram
-        memcpy(0x9000 as &u8, ascii_font_start(), ascii_font_len());
+        memcpy(0x9000 as @u8, ascii_font_start(), ascii_font_len())
 
         // set palette (4 greyscale)
-        *(0xff47 as &u8) = 0xe4;
+        0xff47 as @u8 #= 0xe4
         // set x,y background scroll
-        *(0xff42 as &u8) = 0;
-        *(0xff43 as &u8) = 0;
-    };
-    lcd_on();
+        0xff42 as @u8 #= 0
+        0xff43 as @u8 #= 0
+    }
+    lcd_on()
 }

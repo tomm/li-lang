@@ -1,44 +1,46 @@
-include "li-code/softmath.li";
-include "li-code/nonstdlib.li";
+include "li-code/softmath.li"
+include "li-code/nonstdlib.li"
 
 var friends: u8,
     map: [[u8; 16]; 16],
-    map2: [[u8; 16]; 16];
+    map2: [[u8; 16]; 16]
 
 fn get_map_wrapped(x: u8, y: u8) -> u8 { map[x&0xf][y&0xf] }
 
 fn gen_tile(x: u8, y: u8) {
-    var friends: u8 = 0;
+    var friends: u8 = 0
 
-    if get_map_wrapped(x-1, y-1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x, y-1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x+1, y-1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x+1, y) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x+1, y+1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x, y+1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x-1, y+1) == 1 { friends = friends + 1 };
-    if get_map_wrapped(x-1, y) == 1 { friends = friends + 1 };
+    if get_map_wrapped(x-1, y-1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x, y-1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x+1, y-1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x+1, y) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x+1, y+1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x, y+1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x-1, y+1) == 1 { friends = friends + 1 }
+    if get_map_wrapped(x-1, y) == 1 { friends = friends + 1 }
 
     if map[x][y] == 1 {
-        map2[x][y] = if (friends == 2) || (friends == 3) { 1 } else { 0 };
+        map2[x][y] = if {friends == 2} || {friends == 3} {1} else {0}
     } else {
-        map2[x][y] = if friends == 3 { 1 } else { 0 };
+        map2[x][y] = if friends == 3 {1} else {0}
     }
+
+    {}
 }
 
 fn life_generation() {
     for y=0u8; y<16; y+=1 {
         for x=0u8; x<16; x+=1 {
-            gen_tile(x, y);
-        };
-    };
+            gen_tile(x, y)
+        }
+    }
 
     // copy map2 back to map
-    memcpy(&map as &u8, &map2 as &u8, 16*16);
+    memcpy(map@ as @u8, map2@ as @u8, 16*16)
 }
 
 fn copy_tiles_to_vram() {
-    //memcpy(0x9000 as &u8, tiles as &u8, tiles_end-tiles);
+    //memcpy(0x9000 as &u8, tiles as &u8, tiles_end-tiles)
     asm("
         ld hl, tiles_end - tiles
         push hl
@@ -55,11 +57,11 @@ fn copy_tiles_to_vram() {
 //macro SQ(x) { x*x }
 
 fn lcd_off() {
-    *(0xff40 as &u8) = 0;
+    0xff40 as @u8 #= 0;
 }
 
 fn lcd_on() {
-    *(0xff40 as &u8) = 0x81; /* i want binary literals... */
+    0xff40 as @u8 #= 0x81; /* i want binary literals... */
 }
 
 fn wait_vblank() {
@@ -70,22 +72,22 @@ fn wait_vblank() {
         jr c, .loop
         cp a, 151
         jr nc, .loop
-    ");
+    ")
 }
 
-var rand_seed: u16;
+var rand_seed: u16
 fn rand() -> u8 {
     // 128 + 8 + 1
-    rand_seed = (rand_seed * 137u16) + 1u16;
+    rand_seed = rand_seed * 137u16 + 1u16
     // return high byte
-    *((&rand_seed as &u8) + 1u16)
+    {rand_seed@ as @u8 + 1u16}#
 }
 
 fn init_map() {
     for y=0u8; y<16; y+=1 {
         for x=0u8; x<16; x+=1 {
-            map[y][x] = if rand() & 1 == 0 { 0 } else { 1 };
-        };
+            map[y][x] = if rand() & 1 == 0 { 0 } else { 1 }
+        }
     }
 }
 
@@ -104,35 +106,35 @@ fn blit_map_to_vram() {
                 inc de
             ENDR
         ENDR
-    ");
+    ")
 }
 
 fn main() {
     // turn off sound
-    *(0xff26 as &u8) = 0;
+    0xff26 as @u8 #= 0
 
-    wait_vblank();
-    lcd_off();
+    wait_vblank()
+    lcd_off()
     {
         // wipe VRAM
-        memset(0x8000 as &u8, 0, 0xa000 - 0x8000);
-        copy_tiles_to_vram();
+        memset(0x8000 as @u8, 0, 0xa000 - 0x8000)
+        copy_tiles_to_vram()
         // set palette (4 greyscale)
-        *(0xff47 as &u8) = 0xe4;
+        0xff47 as @u8 #= 0xe4
         // set x,y background scroll
-        *(0xff42 as &u8) = 0;
-        *(0xff43 as &u8) = 0;
-    };
-    lcd_on();
+        0xff42 as @u8 #= 0
+        0xff43 as @u8 #= 0
+    }
+    lcd_on()
 
-    rand_seed = 1;
+    rand_seed = 1
 
-    init_map();
+    init_map()
 
     loop {
-        wait_vblank();
-        blit_map_to_vram();
-        life_generation();
+        wait_vblank()
+        blit_map_to_vram()
+        life_generation()
     }
 }
 
@@ -157,4 +159,4 @@ tiles:
         dw `33333333
         dw `33333333
 tiles_end:
-");
+")

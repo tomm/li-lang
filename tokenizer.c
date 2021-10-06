@@ -17,6 +17,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_TILDE: return "~";
         case T_MINUS: return "-";
         case T_PLUS: return "+";
+        case T_HASH: return "#";
+        case T_ATSIGN: return "@";
         case T_AMPERSAND: return "&";
         case T_PIPE: return "|";
         case T_ACUTE: return "^";
@@ -99,6 +101,8 @@ Vec lex(Str buf, const char *filename) {
         else if (*pos == '-') { EMIT(((Token) { T_MINUS, line, col, filename })); NEXT(); }
         else if (*pos == '+' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_PLUSASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '+') { EMIT(((Token) { T_PLUS, line, col, filename })); NEXT(); }
+        else if (*pos == '@') { EMIT(((Token) { T_ATSIGN, line, col, filename })); NEXT(); }
+        else if (*pos == '#') { EMIT(((Token) { T_HASH, line, col, filename })); NEXT(); }
         else if (*pos == '&' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_BITANDASSIGN, line, col, filename })); NEXT(); NEXT(); }
         else if (*pos == '&') { EMIT(((Token) { T_AMPERSAND, line, col, filename })); NEXT(); }
         else if (*pos == '|' && LOOK_AHEAD() == '=') { EMIT(((Token) { T_BITORASSIGN, line, col, filename })); NEXT(); NEXT(); }

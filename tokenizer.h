@@ -17,6 +17,8 @@ typedef struct Token {
         T_COLON,
         T_MINUS,
         T_PLUS,
+        T_HASH,
+        T_ATSIGN,
         T_AMPERSAND,
         T_EXCLAMATION,
         T_PIPE,
