@@ -133,31 +133,26 @@ fn benchmark_array_ops(a: @[[u8; 3]; 3], b: @[[u8; 3]; 3]) {
 var elapsed_vblanks: u16
 
 fn on_vblank() {
-    asm("
-        push af
-        push bc
-        push de
-        push hl
-
-    ")
+    `push af
+     push bc
+     push de
+     push hl`
     elapsed_vblanks = elapsed_vblanks + 1u16
-    asm("
-        pop hl
-        pop de
-        pop bc
-        pop af
-    ")
+    `pop hl
+     pop de
+     pop bc
+     pop af`
 }
 
 fn enable_vblank() {
     0xffff as @u8 #= 1
-    asm("ei")
+    `ei`
 }
 
 var randSeed: u16
 fn rand() -> u8 {
     // 128 + 8 + 1
-    randSeed = {randSeed * 137} + 1
+    randSeed = randSeed * 137 + 1
     // return high byte
     {randSeed@ as @u8 + 1}#
 }

@@ -60,20 +60,15 @@ var elapsed_vblanks: u16
 // enable the vblank interrupt flag specifically (bit 0 of $ffff)
 // for the on_vblank handler to be called
 fn on_vblank() {
-    asm("
-        push af
-        push bc
-        push de
-        push hl
-
-    ")
+    `push af
+     push bc
+     push de
+     push hl`
     elapsed_vblanks = elapsed_vblanks + 1u16
-    asm("
-        pop hl
-        pop de
-        pop bc
-        pop af
-    ")
+    `pop hl
+     pop de
+     pop bc
+     pop af`
 }
 
 fn enable_vblank() {
@@ -412,13 +407,12 @@ fn test_u8_assigns() {
 
 fn test_fwd_decl(a: u8) -> u8;
 
-asm(`
-test_fwd_decl:
-        ld hl, sp+3
-        ld a, [hl]
-        inc a
-        ret
-`)
+`test_fwd_decl:
+         ld hl, sp+3
+         ld a, [hl]
+         inc a
+         ret
+`
 
 fn test_ptr_cast() {
     var x: u16 = 0xcafe

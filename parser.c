@@ -169,6 +169,7 @@ static NodeIdx parse_expression(TokenCursor *toks);
 static NodeIdx parse_list_expression(TokenCursor *toks, enum TokType terminator);
 static NodeIdx parse_localscope_expression(TokenCursor *toks, enum TokType terminator, bool skip_var_keyword, NodeIdx scoped_expr);
 
+// asm("blah")
 static NodeIdx parse_asm_expression(TokenCursor *toks) {
     // 'asm' identifier already chomped
     chomp(toks, T_LPAREN);
@@ -183,6 +184,23 @@ static NodeIdx parse_asm_expression(TokenCursor *toks) {
             .type = EXPR_ASM,
             .asm_ = {
                 .asm_text = asm_text->str_literal
+            }
+        }
+    });
+    return expr;
+}
+
+// `my asm here
+static NodeIdx parse_asm_literal(const Token *t) {
+    assert(t->type == T_ASM);
+    NodeIdx expr = alloc_node();
+    set_node(expr, &(AstNode) {
+        .start_token = t,
+        .type = AST_EXPR,
+        .expr = {
+            .type = EXPR_ASM,
+            .asm_ = {
+                .asm_text = t->asm_
             }
         }
     });
@@ -348,6 +366,8 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 return expr;
             }
             break;
+        case T_ASM:
+            return parse_asm_literal(t);
         default:
             parse_error("Expected primary expression", 0, t);
     }
@@ -1276,6 +1296,9 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
                 break;
             case T_FN:
                 ChildCursor_append(children, parse_function(toks));
+                break;
+            case T_ASM:
+                ChildCursor_append(children, parse_asm_literal(t));
                 break;
             case T_IDENT:
                 if (Str_eq(t->ident, "asm")) {

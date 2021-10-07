@@ -67,6 +67,7 @@ const char *token_type_cstr(enum TokType type) {
         case T_FOR: return "for";
         case T_LOOP: return "loop";
         case T_EOF: return "end-of-file";
+        case T_ASM: return "asm";
         default: assert(false);
     }
 }
@@ -158,7 +159,7 @@ Vec lex(Str buf, const char *filename) {
                 EMIT(t);
             }
         }
-        else if (!last_tok_was_literal && (*pos == '"' || *pos == '`')) {
+        else if (!last_tok_was_literal && *pos == '"') {
             const char delim = *pos;
             Token t = { T_LITERAL_STR, line, col, filename };
 
@@ -177,6 +178,19 @@ Vec lex(Str buf, const char *filename) {
 
             EMIT(t);
             last_tok_was_literal = true;
+        }
+        else if (*pos == '`') {
+            Token t = { T_ASM, line, col, filename };
+            NEXT();
+            t.asm_.len = 0;
+            t.asm_.s = pos;
+            while (pos < end && *pos != '`') {
+                t.asm_.len++;
+                NEXT();
+            }
+            // skip terminating delimiter
+            NEXT();
+            EMIT(t);
         }
         else if (*pos == ',') { EMIT(((Token) { T_COMMA, line, col, filename })); NEXT(); }
         // C++ comment

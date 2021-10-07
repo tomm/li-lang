@@ -84,14 +84,14 @@ fn lcd_on() {
 }
 
 fn wait_vblank() {
-    asm("
+    `
     .loop:
         ld a, [$ff44]
         cp a, 144
         jr c, .loop
         cp a, 151
         jr nc, .loop
-    ")
+    `
 }
 
 

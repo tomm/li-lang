@@ -44,7 +44,8 @@ syntax match	liCharacter	"L\='[^\\]'"
 syntax match	liCharacter	"L'[^']*'" contains=liSpecialChar
 "syntax match	cSpecial	display contained "\\\(x\x\+\|\o\{1,3}\|.\|$\)"
 syntax match	liSpecialChar	display contained "\\\(x\x\+\|\o\{1,3}\|.\|$\)"
-syntax region  liMultilineString     start=+\z(["`]\)+ skip=+\\\\\|\\\z1+ end=+\z1+ contains=liGbAsm,liGbReg,liAsmLabel,liAsmComment
+syntax region  liMultilineString     start=+\z(["]\)+ skip=+\\\\\|\\\z1+ end=+\z1+ contains=liGbAsm,liGbReg,liAsmLabel,liAsmComment
+syntax region  liAsmLiteral     start=+\z([`]\)+ skip=+\\\\\|\\\z1+ end=+\z1+ contains=liGbAsm,liGbReg,liAsmLabel,liAsmComment
 "syntax region  liString        start=+\z(["']\)+ end=+\z1+ contains=@Spell,liInterpolation,liSpecialChar
 "syntax region  liRawString     start=+r\z(["']\)+ end=+\z1+ contains=@Spell
 "syntax region  liMultilineString     start=+\z("\{3\}\|'\{3\}\)+ end=+\z1+ contains=@Spell,liInterpolation,liSpecialChar
@@ -93,7 +94,6 @@ highlight default link liGbReg           Type
 highlight default link liAsmComment      Comment
 highlight default link liAsmLabel        Label
 highlight default link liType            Type
-highlight default link liInterpolation   PreProc
 highlight default link liSpecialChar     SpecialChar
 highlight default link liLibrary         Include
 

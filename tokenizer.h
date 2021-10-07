@@ -63,6 +63,7 @@ typedef struct Token {
         T_LITERAL_U8,
         T_LITERAL_U16,
         T_LITERAL_ANY_INT,
+        T_ASM,
         T_RARROW,
         T_WHILE,
         T_LOOP,
@@ -79,6 +80,7 @@ typedef struct Token {
         Str label;
         int int_literal;
         Str str_literal;
+        Str asm_;
     };
 } Token;
 
