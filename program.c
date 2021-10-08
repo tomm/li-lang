@@ -604,21 +604,36 @@ static void typecheck_fn(Program *prog, NodeIdx fn) {
     free_localscope(&scope);
 }
 
-static void check_is_literal(Program *prog, NodeIdx node) {
+static void check_is_constexpr(Program *prog, NodeIdx node) {
     AstNode *n = get_node(node);
     assert(n->type == AST_EXPR);
+    if (n->expr.type == EXPR_CAST) {
+        // casts to pointer can be compile-time evaluated
+        const TypeId cast_to = n->expr.cast.to_type;
+        if (get_type(cast_to)->type == TT_PTR) {
+            check_is_constexpr(prog, n->expr.cast.arg);
+            const NodeIdx next_sibling = n->next_sibling;
+            *n = *get_node(n->expr.cast.arg);
+            n->next_sibling = next_sibling;
+            n->expr.eval_type = cast_to;
+        } else {
+            fatal_error(n->start_token, "Only casts to pointer can be evaluated in compile-time expressions");
+        }
+    }
     if (n->expr.type != EXPR_LITERAL) {
         fatal_error(n->start_token, "Expected literal");
     }
     switch (n->expr.literal.type) {
         case LIT_ARRAY:
-            check_is_literal(prog, n->expr.literal.literal_array_first_val);
+            check_is_constexpr(prog, n->expr.literal.literal_array_first_val);
             break;
         case LIT_U8:
         case LIT_U16:
         case LIT_VOID:
         case LIT_STR:
             break;
+        case LIT_INT_ANY:
+            fatal_error(n->start_token, "Can not resolve integer type in literal");
     }
 }
 
@@ -630,7 +645,7 @@ static void typecheck_global(Program *prog, NodeIdx node) {
     assert(n->var_def.value != 0);
 
     TypeId v = typecheck_expr(prog, NULL, n->var_def.value, n->var_def.type);
-    check_is_literal(prog, n->var_def.value);
+    check_is_constexpr(prog, n->var_def.value);
 
     if (n->var_def.type == TYPE_UNKNOWN) {
         n->var_def.type = v;

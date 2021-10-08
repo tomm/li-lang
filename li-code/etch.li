@@ -1,14 +1,10 @@
 include "li-code/softmath.li"
 include "li-code/nonstdlib.li"
 
-var BG: @[[u8; 32]; 32],
-    TILES: @[[u16; 8]; 256]
+const BG = 0x9800 as @[[u8; 32]; 32],
+      TILES = 0x8000 as @[[u16; 8]; 256]
 
 fn main() {
-    // TODO want macros
-    BG = 0x9800 as @[[u8; 32]; 32]
-    TILES = 0x8000 as @[[u16; 8]; 256]
-
     // turn off sound
     0xff26 as @u8 #= 0
 
