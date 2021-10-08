@@ -77,7 +77,7 @@ void init_types() {
 TypeId make_ptr_type(TypeId ref) {
     // XXX could reuse types. instead we always make a new one
     char buf[256];
-    snprintf(buf, sizeof(buf), "&%.*s", (int)get_type(ref)->name.len, get_type(ref)->name.s);
+    snprintf(buf, sizeof(buf), "@%.*s", (int)get_type(ref)->name.len, get_type(ref)->name.s);
     return add_type((Type) {
         .type = TT_PTR,
         .name = { .s = strdup(buf), .len = strlen(buf) },

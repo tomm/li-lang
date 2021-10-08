@@ -17,14 +17,18 @@ testsuite:
 	rgblink -o testsuite.gb testsuite.o
 	rgbfix -v -p 0 testsuite.gb
 	
-conway:
+examples:
 	./lic li-code/conway.li
 	rgbasm out.asm -o conway.o
 	rgblink -o conway.gb conway.o
 	rgbfix -v -p 0 conway.gb
 	
-benchmark:
 	./lic li-code/benchmark.li
 	rgbasm out.asm -o benchmark.o
 	rgblink -o benchmark.gb benchmark.o
 	rgbfix -v -p 0 benchmark.gb
+	
+	./lic li-code/etch.li
+	rgbasm out.asm -o etch.o
+	rgblink -o etch.gb etch.o
+	rgbfix -v -p 0 etch.gb

@@ -1,0 +1,118 @@
+include "li-code/softmath.li"
+include "li-code/nonstdlib.li"
+
+var BG: @[[u8; 32]; 32],
+    TILES: @[[u16; 8]; 256]
+
+fn main() {
+    // TODO want macros
+    BG = 0x9800 as @[[u8; 32]; 32]
+    TILES = 0x8000 as @[[u16; 8]; 256]
+
+    // turn off sound
+    0xff26 as @u8 #= 0
+
+    wait_vblank()
+    // lcd off
+    0xff40 as @u8 #= 0
+    {
+        // wipe VRAM
+        memset(0x8000 as @u8, 0, 0xa000 - 0x8000)
+        // set palette (4 greyscale)
+        0xff47 as @u8 #= 0xe4
+        // set x,y background scroll
+        0xff42 as @u8 #= 0
+        0xff43 as @u8 #= 0
+    }
+    // lcd on. bg bitmaps at 0x8000
+    0xff40 as @u8 #= 0x91
+
+    var etch_x = 80u8, etch_y = 72u8
+    loop {
+        wait_vblank()
+        putpixel(etch_x, etch_y)
+
+        poll_gamepad()
+
+        if gamepad_pressed == 0x80 { etch_y += 1 }
+        if gamepad_pressed == 0x40 { etch_y -= 1 }
+        if gamepad_pressed == 0x20 { etch_x -= 1 }
+        if gamepad_pressed == 0x10 { etch_x += 1 }
+        if gamepad_pressed == 0x8 { `jp __start` }
+
+        clear_gamepad()
+    }
+}
+
+var next_tile: u8
+const xpixel_lookup: [u16; 8] = [
+    0x8080, 0x4040, 0x2020, 0x1010, 0x0808, 0x0404, 0x0202, 0x0101
+]
+fn putpixel(x: u8, y: u8) {
+    var tx = x>>3,
+        ty = y>>3,
+        cx = x&7,
+        cy = y&7,
+        bg = BG#[ty][tx]@
+
+    // alloc new tile if tile not drawn on yet
+    if bg# == 0 {
+        next_tile += 1
+        bg# = next_tile
+    }
+
+    var sprite_line = TILES#[bg#][cy]@
+    sprite_line# |= xpixel_lookup[cx]
+    {}
+}
+
+fn wait_vblank() {`
+    .loop:
+        ld a, [$ff44]
+        cp a, 144
+        jr c, .loop
+`}
+
+//    0x8 start 0x4 select     0x2 B         0x1 A
+//   0x80 down  0x40 up       0x20 left     0x10 right
+var gamepad_pressed: u8
+var gamepad_held: u8
+fn clear_gamepad() {
+    gamepad_pressed = 0
+    gamepad_held = 0
+    {}
+}
+fn poll_gamepad() {`
+    ; read gamepad state, updating gamepad_held and gamepad_pressed
+    ld a,$20
+    ld [$ff00],a
+    ld a,[$ff00]
+    ld a,[$ff00]
+    cpl
+    and $0f
+    swap a
+    ld b,a
+    ld a,$10
+    ld [$ff00],a
+    ld a,[$ff00]
+    ld a,[$ff00]
+    ld a,[$ff00]
+    ld a,[$ff00]
+    ld a,[$ff00]
+    ld a,[$ff00]  
+    cpl
+    and $0f
+    or b
+    ld b, a
+    ld a,[gamepad_held]
+    xor b
+    and b
+    ld hl, gamepad_pressed
+    xor [hl]
+    or a, [hl]
+    ld [gamepad_pressed],a
+    ld a,b
+    ld [gamepad_held],a
+    ld a,$30
+    ld [$ff00],a
+`}
