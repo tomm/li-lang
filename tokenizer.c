@@ -60,6 +60,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_LITERAL_U8: return "literal u8";
         case T_LITERAL_U16: return "literal u16";
         case T_LITERAL_ANY_INT: return "literal any int";
+        case T_LITERAL_TRUE: return "literal true";
+        case T_LITERAL_FALSE: return "literal false";
         case T_IF: return "if";
         case T_ELSE: return "else";
         case T_RARROW: return "->";
@@ -227,6 +229,10 @@ Vec lex(Str buf, const char *filename) {
 
             if (Str_eq(t.ident, "as")) {
                 EMIT(((Token) { T_AS, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "true")) {
+                EMIT(((Token) { T_LITERAL_TRUE, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "false")) {
+                EMIT(((Token) { T_LITERAL_FALSE, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "return")) {
                 EMIT(((Token) { T_RETURN, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "fn")) {

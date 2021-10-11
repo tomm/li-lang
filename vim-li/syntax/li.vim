@@ -16,12 +16,12 @@ syntax sync fromstart
 " keyword definitions
 syntax keyword liConditional    if else switch
 syntax keyword liRepeat         do while for loop
-"syntax keyword liBoolean        true false
+syntax keyword liBoolean        true false
 "syntax keyword liConstant       null
 "syntax keyword liTypedef        this super class typedef
 "syntax keyword liOperator       new is as in factory
 syntax match   liOperator       "(\|)\|%\|<\|>\|*\|/\|+\|-\|!\|\~\|@\|#\|+=\|-=\|*=\|=\|/=\|%=\|&\||\|\^\|>>="
-syntax keyword liType           void u8 u16 never
+syntax keyword liType           void bool i8 i16 u8 u16 never
 syntax keyword liStatement      return
 "syntax keyword liStorageClass   static abstract final const
 "syntax keyword liExceptions     throw rethrow try on catch finally

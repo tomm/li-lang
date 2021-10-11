@@ -211,6 +211,23 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
     const Token *t = tok_next(toks);
 
     switch (t->type) {
+        case T_LITERAL_TRUE:
+        case T_LITERAL_FALSE:
+            {
+                NodeIdx expr = alloc_node();
+                set_node(expr, &(AstNode) {
+                    .start_token = t,
+                    .type = AST_EXPR,
+                    .expr = {
+                        .type = EXPR_LITERAL,
+                        .literal = {
+                            .type = LIT_BOOL,
+                            .literal_bool = t->type == T_LITERAL_TRUE
+                        }
+                    }
+                });
+                return expr;
+            }
         case T_LITERAL_U8:
             {
                 NodeIdx expr = alloc_node();

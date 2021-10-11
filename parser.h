@@ -62,10 +62,11 @@ typedef struct AstNode {
             union {
                 struct {
                     enum LiteralType {
-                        LIT_VOID, LIT_U8, LIT_U16, LIT_INT_ANY /* not passed to backend */, LIT_STR, LIT_ARRAY
+                        LIT_VOID, LIT_U8, LIT_U16, LIT_INT_ANY /* not passed to backend */, LIT_STR, LIT_ARRAY, LIT_BOOL
                     } type;
 
                     union {
+                        bool literal_bool;
                         int literal_int;
                         Str literal_str;
                         NodeIdx literal_array_first_val;

@@ -55,7 +55,7 @@ fn main() {
             elapsed = elapsed_vblanks
         while i < 10000 {
             i += 1
-            benchmark_logic_ops(i as u8, !{i as u8})
+            benchmark_logic_ops(i == 0, i != 0)
         }
         elapsed = elapsed_vblanks - elapsed
         puts("LOGIC OPS   $" as @u8)
@@ -111,7 +111,7 @@ fn benchmark_u16_arith(a: u16) -> u16 {
 fn benchmark_u8_arith(a: u8) -> u8 {
     -2 + a + a - 34 >> 1 & 0xf0 | a
 }
-fn benchmark_logic_ops(a: u8, b: u8) -> u8 {
+fn benchmark_logic_ops(a: bool, b: bool) -> bool {
     !a || {a && b} || b
 }
 fn benchmark_array_ops(a: @[[u8; 3]; 3], b: @[[u8; 3]; 3]) {

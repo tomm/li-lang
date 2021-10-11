@@ -16,8 +16,11 @@ typedef struct Type {
         TT_UNKNOWN,
         TT_NEVER,
         TT_PRIM_VOID,
+        TT_PRIM_BOOL,
         TT_PRIM_U8,
+        TT_PRIM_I8,
         TT_PRIM_U16,
+        TT_PRIM_I16,
         TT_ARRAY,
         TT_FUNC,
         TT_PTR,
@@ -44,8 +47,11 @@ typedef struct Type {
 #define TYPE_UNKNOWN 0 // used by AST before expression nodes have a known type
 #define NEVER   1
 #define VOID    2
-#define U8      3
-#define U16     4
+#define BOOL    3
+#define U8      4
+#define I8      5
+#define U16     6
+#define I16     7
 
 void init_types();
 TypeId add_type(Type t);

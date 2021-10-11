@@ -50,7 +50,7 @@ var test_u16: u16,
 
 fn pass() { passes = passes + 1 total = total + 1; }
 fn fail_() { fails = fails + 1 total = total + 1; } // seems 'fail' is an rgbasm special thing...
-fn expect(result: u8) { if result { pass() } else { fail_() } }
+fn expect(result: bool) { if result { pass() } else { fail_() } }
 
 var elapsed_vblanks: u16
 
@@ -101,8 +101,8 @@ fn main() {
     // forward/extern declarations
     expect(test_fwd_decl(2) == 3)
     // if expression
-    expect({if 1 {0xcafeu16} else {0xdeadu16}} == 0xcafe)
-    expect({if 0 {0xcafeu16} else {0xdeadu16}} == 0xdead)
+    expect({if 1==1 {0xcafeu16} else {0xdeadu16}} == 0xcafe)
+    expect({if 0==1 {0xcafeu16} else {0xdeadu16}} == 0xdead)
     // == operator
     expect(eq_u8(4,4))
     expect(!eq_u8(5,6))
@@ -154,16 +154,16 @@ fn main() {
     expect(lte_u16(0x1233,0x1333))
     expect(!lte_u16(0x1233,0x1133))
     // logical ops
-    expect(log_and(1,1))
-    expect(!log_and(0,1))
-    expect(!log_and(1,0))
-    expect(!log_and(0,0))
-    expect(log_or(1,1))
-    expect(log_or(0,1))
-    expect(log_or(1,0))
-    expect(!log_or(0,0))
-    expect(!log_not(5))
-    expect(log_not(0))
+    expect(log_and_u8(true,true))
+    expect(!log_and_u8(false,true))
+    expect(!log_and_u8(true,false))
+    expect(!log_and_u8(false,false))
+    expect(log_or_u8(true,true))
+    expect(log_or_u8(false,true))
+    expect(log_or_u8(true,false))
+    expect(!log_or_u8(false,false))
+    expect(!log_not_u8(true))
+    expect(log_not_u8(false))
     // bitwise
     expect(bitnot_u8(0xc0) == 0x3f)
     expect(bitnot_u16(0xfc0f) == 0x3f0)
@@ -304,9 +304,9 @@ fn main() {
 }
 
 // wrap operators to confound constant folding optimizer
-fn log_not(a: u8) -> u8 { !a }
-fn log_and(a: u8, b: u8) -> u8 { a && b }
-fn log_or(a: u8, b: u8) -> u8 { a || b }
+fn log_not_u8(a: bool) -> bool { !a }
+fn log_and_u8(a: bool, b: bool) -> bool { a && b }
+fn log_or_u8(a: bool, b: bool) -> bool { a || b }
 fn bitnot_u8(a: u8) -> u8 { ~a }
 fn bitnot_u16(a: u16) -> u16 { ~a }
 fn bitand_u8(a: u8, b: u8) -> u8 { a & b }
@@ -315,18 +315,18 @@ fn bitor_u8(a: u8, b: u8) -> u8 { a | b }
 fn bitor_u16(a: u16, b: u16) -> u16 { a | b }
 fn bitxor_u8(a: u8, b: u8) -> u8 { a ^ b }
 fn bitxor_u16(a: u16, b: u16) -> u16 { a ^ b }
-fn eq_u8(a: u8, b: u8) -> u8 { a == b }
-fn eq_u16(a: u16, b: u16) -> u8 { a == b }
-fn neq_u8(a: u8, b: u8) -> u8 { a != b }
-fn neq_u16(a: u16, b: u16) -> u8 { a != b }
-fn gt_u8(a: u8, b: u8) -> u8 { a > b }
-fn gt_u16(a: u16, b: u16) -> u8 { a > b }
-fn gte_u8(a: u8, b: u8) -> u8 { a >= b }
-fn gte_u16(a: u16, b: u16) -> u8 { a >= b }
-fn lt_u8(a: u8, b: u8) -> u8 { a < b }
-fn lt_u16(a: u16, b: u16) -> u8 { a < b }
-fn lte_u8(a: u8, b: u8) -> u8 { a <= b }
-fn lte_u16(a: u16, b: u16) -> u8 { a <= b }
+fn eq_u8(a: u8, b: u8) -> bool { a == b }
+fn eq_u16(a: u16, b: u16) -> bool { a == b }
+fn neq_u8(a: u8, b: u8) -> bool { a != b }
+fn neq_u16(a: u16, b: u16) -> bool { a != b }
+fn gt_u8(a: u8, b: u8) -> bool { a > b }
+fn gt_u16(a: u16, b: u16) -> bool { a > b }
+fn gte_u8(a: u8, b: u8) -> bool { a >= b }
+fn gte_u16(a: u16, b: u16) -> bool { a >= b }
+fn lt_u8(a: u8, b: u8) -> bool { a < b }
+fn lt_u16(a: u16, b: u16) -> bool { a < b }
+fn lte_u8(a: u8, b: u8) -> bool { a <= b }
+fn lte_u16(a: u16, b: u16) -> bool { a <= b }
 fn add_u8(a: u8, b: u8) -> u8 { a + b }
 fn add_u16(a: u16, b: u16) -> u16 { a + b }
 fn sub_u8(a: u8, b: u8) -> u8 { a - b }

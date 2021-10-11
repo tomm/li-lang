@@ -85,12 +85,12 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_GT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_LT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_GTE, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_LTE, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { BUILTIN_GT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { BUILTIN_LT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { BUILTIN_GTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { BUILTIN_LTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
     { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_DIV, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_MODULO, TT_PRIM_U8, TT_PRIM_U8, U8 },
@@ -110,18 +110,17 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
-    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
 
     { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, U8 },
-    { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, U8 },
-    { BUILTIN_GT, TT_PRIM_U16, TT_PRIM_U16, U8 },
-    { BUILTIN_LT, TT_PRIM_U16, TT_PRIM_U16, U8 },
-    { BUILTIN_GTE, TT_PRIM_U16, TT_PRIM_U16, U8 },
-    { BUILTIN_LTE, TT_PRIM_U16, TT_PRIM_U16, U8 },
+    { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { BUILTIN_GT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { BUILTIN_LT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { BUILTIN_GTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { BUILTIN_LTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
     { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_DIV, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { BUILTIN_MODULO, TT_PRIM_U16, TT_PRIM_U16, U16 },
@@ -141,8 +140,9 @@ static const ValidBuiltin valid_builtins[] = {
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     
-    { BUILTIN_LOGICAL_AND, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_LOGICAL_OR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, BOOL },
+    { BUILTIN_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    { BUILTIN_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
     { -1 }
 };
 
@@ -408,6 +408,9 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                 case LIT_VOID:
                     t = VOID;
                     break;
+                case LIT_BOOL:
+                    t = BOOL;
+                    break;
                 case LIT_STR:
                     // len+1 to accommodate null terminator
                     t = make_array_type(n->expr.literal.literal_str.len+1, U8);
@@ -487,8 +490,8 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             {
                 TypeId cond = typecheck_expr(prog, scope, n->expr.if_else.condition, U8 /* XXX bool */);
 
-                if (cond != U8 && cond != U16) {
-                    fatal_error(n->start_token, "expected U8 or U16 if condition, but found '%.*s'",
+                if (cond != BOOL) {
+                    fatal_error(n->start_token, "expected `bool` if condition, but found '%.*s'",
                             (int)get_type(cond)->name.len,
                             get_type(cond)->name.s);
                 }
@@ -513,10 +516,10 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
         case EXPR_LOOP:
             {
                 if (n->expr.loop.condition != 0) {
-                    TypeId cond = typecheck_expr(prog, scope, n->expr.loop.condition, U8 /* XXX bool */);
+                    TypeId cond = typecheck_expr(prog, scope, n->expr.loop.condition, BOOL);
 
-                    if (cond != U8 && cond != U16) {
-                        fatal_error(n->start_token, "expected U8 or U16 while condition, but found '%.*s'",
+                    if (cond != BOOL) {
+                        fatal_error(n->start_token, "expected `bool` while condition, but found '%.*s'",
                                 (int)get_type(cond)->name.len,
                                 get_type(cond)->name.s);
                     }

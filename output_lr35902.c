@@ -233,21 +233,21 @@ static Value emit_value_to_register(Value v, bool to_aux_reg) {
         return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
     }
 
-    else if (v.typeId == U8) {
+    else if (v.typeId == U8 || v.typeId == BOOL) {
         switch (v.storage) {
             case ST_REG_EA:
                 _i("ld %s, [hl]", to_aux_reg ? "b" : "a");
-                return (Value) { .typeId = U8, .storage = st };
+                return (Value) { .typeId = v.typeId, .storage = st };
             case ST_REG_VAL:
                 if (st != v.storage) {
                     _i("ld b, a");
                 }
-                return (Value) { .typeId = U8, .storage = st };
+                return (Value) { .typeId = v.typeId, .storage = st };
             case ST_REG_VAL_AUX:
                 if (st != v.storage) {
                     _i("ld a, b");
                 }
-                return (Value) { .typeId = U8, .storage = st };
+                return (Value) { .typeId = v.typeId, .storage = st };
         }
     }
     
@@ -291,6 +291,11 @@ static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
         case TT_PRIM_VOID:
             fatal_error(n->start_token, "can not use a void value");
             return;
+        case TT_PRIM_BOOL:
+            emit_value_to_register(v, false);
+            _i("push af");
+            frame->stack_offset += 2;
+            return;
         case TT_PRIM_U8:
             emit_value_to_register(v, false);
             _i("push af");
@@ -325,6 +330,10 @@ static void emit_push_temporary(NodeIdx nidx, Value v, StackFrame *frame) {
     switch (v.storage) {
         case ST_REG_VAL:
             switch (v.typeId) {
+                case BOOL:
+                    _i("push af");
+                    frame->stack_offset += 2;
+                    return;
                 case U8:
                     _i("push af");
                     frame->stack_offset += 2;
@@ -360,6 +369,10 @@ static Value emit_pop_temporary(Value v, StackFrame *frame, bool to_aux_reg) {
         case ST_REG_VAL:
             switch (v.typeId) {
                 case VOID: assert(false);
+                case BOOL:
+                    _i("pop %s", to_aux_reg ? "bc" : "af");
+                    frame->stack_offset -= 2;
+                    return (Value) { .storage = st, .typeId = BOOL };
                 case U8:
                     _i("pop %s", to_aux_reg ? "bc" : "af");
                     frame->stack_offset -= 2;
@@ -392,21 +405,11 @@ typedef struct BuiltinImpl {
     Value (*emit)(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2);
 } BuiltinImpl;
 
-static void emit_truthy_test_to_zflag(const Token *t, Value v)
+static void emit_bool_to_z_flag(Value v)
 {
-    if (v.typeId == U8) {
-        emit_value_to_register(v, false);  // to 'a' register
-        _i("and a, a");
-    } /*else if (v.typeId == U16) {
-        emit_value_to_register(v, false);  // to 'hl' register
-        _i("ld a, l");
-        _i("or a, h");
-    }*/
-    else {
-        fatal_error(t, "Type '%.*s' cannot be evaluated for truthyness",
-                (int)get_type(v.typeId)->name.len,
-                get_type(v.typeId)->name.s);
-    }
+    assert(v.typeId == BOOL);
+    emit_value_to_register(v, false);  // to 'a' register
+    _i("and a, a");
 }
 
 Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -519,6 +522,20 @@ Value emit_addressof(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     return (Value) { .typeId = make_ptr_type(v.typeId), .storage = ST_REG_VAL };
 }
 
+Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx _) {
+    AstNode *n = get_node(expr);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
+
+    const int false_label = _local_label_seq++;
+    v = emit_value_to_register(v, false);   // v in `a`
+    emit_bool_to_z_flag(v);
+    _i("ld a, 0");  // can't use xor because it clears flags
+    _i("jr nz, .l%d", false_label);
+    _i("inc a");
+    _label(false_label);
+    return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
+}
+
 Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     //AstNode *arg = get_node(n->expr.builtin.arg1);
@@ -535,17 +552,6 @@ Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Nod
             v = emit_value_to_register(v, false);   // v in `a`
             _i("cpl");
             return (Value) { .typeId = U8, .storage = ST_REG_VAL };
-        case BUILTIN_UNARY_LOGICAL_NOT:
-            {
-                const int false_label = _local_label_seq++;
-                v = emit_value_to_register(v, false);   // v in `a`
-                emit_truthy_test_to_zflag(n->start_token, v);
-                _i("ld a, 0");  // can't use xor because it clears flags
-                _i("jr nz, .l%d", false_label);
-                _i("inc a");
-                _label(false_label);
-                return (Value) { .typeId = U8, .storage = ST_REG_VAL };
-            }
         default:
             assert(false);
     }
@@ -637,20 +643,20 @@ Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
     AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
-    emit_truthy_test_to_zflag(arg1->start_token, v1);
+    emit_bool_to_z_flag(v1);
     const int false_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
     _i("jp z, .l%d", false_label);
 
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
-    emit_truthy_test_to_zflag(arg2->start_token, v2);
+    emit_bool_to_z_flag(v2);
     _i("jp z, .l%d", false_label);
     _i("ld a, 1");
     _i("jr .l%d", end_label);
     _label(false_label);
     _i("xor a");
     _label(end_label);
-    return (Value) { .storage = ST_REG_VAL, .typeId = U8 };
+    return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
 Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -659,20 +665,20 @@ Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
-    emit_truthy_test_to_zflag(arg1->start_token, v1);
+    emit_bool_to_z_flag(v1);
     const int true_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
     _i("jp nz, .l%d", true_label);
 
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
-    emit_truthy_test_to_zflag(arg2->start_token, v2);
+    emit_bool_to_z_flag(v2);
     _i("jp nz, .l%d", true_label);
     _i("xor a");
     _i("jr .l%d", end_label);
     _label(true_label);
     _i("ld a, 1");
     _label(end_label);
-    return (Value) { .storage = ST_REG_VAL, .typeId = U8 };
+    return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
 Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
@@ -739,7 +745,7 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
                 _i("inc a");
                 _label(false_label);
             }
-            break;
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         case BUILTIN_GTE:
         case BUILTIN_LTE:
             {
@@ -751,7 +757,7 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
                 _i("xor a");
                 _label(true_label);
             }
-            break;
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         case BUILTIN_LT:
         case BUILTIN_GT:
             {
@@ -764,7 +770,7 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
                 _i("inc a");
                 _label(false_label);
             }
-            break;
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         default:
             assert(false);
             break;
@@ -795,19 +801,6 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
             _i("cpl");
             _i("ld l, a");
             return (Value) { .typeId = U16, .storage = ST_REG_VAL };
-            /*
-        case BUILTIN_UNARY_LOGICAL_NOT:
-            {
-                const int false_label = _local_label_seq++;
-                v = emit_value_to_register(v, false);   // v in `hl`
-                emit_truthy_test_to_zflag(n->start_token, v);
-                _i("ld a, 0");  // can't use xor because it clears flags
-                _i("jr nz, .l%d", false_label);
-                _i("inc a");
-                _label(false_label);
-                return (Value) { .typeId = U8, .storage = ST_REG_VAL };
-            }
-            */
         default:
             assert(false);
     }
@@ -1113,7 +1106,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
                 _i("dec a");
                 _label(l);
             }
-            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         case BUILTIN_GT:
         case BUILTIN_LT:
             {
@@ -1138,7 +1131,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
                 _i("inc a");
                 _label(end_label);
             }
-            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         case BUILTIN_GTE:
         case BUILTIN_LTE:
             {
@@ -1163,7 +1156,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
                 _i("xor a");
                 _label(end_label);
             }
-            return (Value) { .typeId = U8, .storage = ST_REG_VAL };
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         default:
             assert(false);
             break;
@@ -1210,7 +1203,6 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
     { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
-    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
 
     { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
     { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
@@ -1243,8 +1235,9 @@ static BuiltinImpl builtin_impls[] = {
     { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
     { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
 
-    { BUILTIN_LOGICAL_AND, TT_PRIM_U8, TT_PRIM_U8, emit_logical_and },
-    { BUILTIN_LOGICAL_OR, TT_PRIM_U8, TT_PRIM_U8, emit_logical_or },
+    { BUILTIN_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, emit_logical_and },
+    { BUILTIN_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, emit_logical_or },
+    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, emit_logical_not },
 
     { BUILTIN_ASSIGN, TT_ARRAY, TT_ARRAY, emit_assign_array },
     { -1 }
@@ -1402,7 +1395,8 @@ static Value emit_loop(NodeIdx expr, StackFrame frame) {
 
     if (n->expr.loop.condition != 0) {
         Value condition = emit_expression(n->expr.loop.condition, frame);
-        emit_truthy_test_to_zflag(get_node(n->expr.loop.condition)->start_token, condition);
+        if (condition.typeId != BOOL) fatal_error(n->start_token, "FUCK");
+        emit_bool_to_z_flag(condition);
         _i("jp z, .l%d_break", jump_label);
     }
     /*Value body =*/ emit_expression(n->expr.loop.body, frame);
@@ -1421,7 +1415,7 @@ static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     const int else_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
 
-    emit_truthy_test_to_zflag(get_node(n->expr.if_else.condition)->start_token, condition);
+    emit_bool_to_z_flag(condition);
     _i("jp z, .l%d", else_label);
 
     Value on_true = emit_expression(n->expr.if_else.on_true, frame);
@@ -1550,6 +1544,10 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                 case LIT_INT_ANY:
                     // should not reach backend
                     assert(false);
+                case LIT_BOOL:
+                    _i("ld a, %d", n->expr.literal.literal_bool ? 1 : 0);
+                    v = (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
+                    break;
                 case LIT_U8:
                     _i("ld a, $%x", n->expr.literal.literal_int);
                     v = (Value) { .typeId = U8, .storage = ST_REG_VAL };
@@ -1735,6 +1733,9 @@ static void _emit_const(NodeIdx node) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_LITERAL);
 
     switch (n->expr.literal.type) {
+        case LIT_BOOL:
+            _i("db %d", n->expr.literal.literal_bool ? 1 : 0);
+            break;
         case LIT_U8:
             _i("db %d", n->expr.literal.literal_int & 0xff);
             break;

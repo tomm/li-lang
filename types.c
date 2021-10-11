@@ -57,11 +57,29 @@ void init_types() {
 
     add_type((Type) {
         /* U8 */
+        .name = { .s = "bool", .len = 4 },
+        .size = 1,
+        .stack_size = 2,
+        .stack_offset = 1, /* because we used `push af` */
+        .type = TT_PRIM_BOOL
+    });
+
+    add_type((Type) {
+        /* U8 */
         .name = { .s = "u8", .len = 2 },
         .size = 1,
         .stack_size = 2,
         .stack_offset = 1, /* because we used `push af` */
         .type = TT_PRIM_U8
+    });
+
+    add_type((Type) {
+        /* I8 */
+        .name = { .s = "i8", .len = 2 },
+        .size = 1,
+        .stack_size = 2,
+        .stack_offset = 1, /* because we used `push af` */
+        .type = TT_PRIM_I8
     });
 
     add_type((Type) {
@@ -71,6 +89,15 @@ void init_types() {
         .stack_size = 2,
         .stack_offset = 0,
         .type = TT_PRIM_U16
+    });
+
+    add_type((Type) {
+        /* I16 */
+        .name = { .s = "i16", .len = 3 },
+        .size = 2,
+        .stack_size = 2,
+        .stack_offset = 0,
+        .type = TT_PRIM_I16
     });
 }
 
@@ -124,6 +151,9 @@ bool is_type_eq(TypeId a, TypeId b) {
             return false;
         case TT_NEVER:
         case TT_PRIM_VOID:
+        case TT_PRIM_BOOL:
+        case TT_PRIM_I8:
+        case TT_PRIM_I16:
         case TT_PRIM_U8:
         case TT_PRIM_U16:
             return a == b;
