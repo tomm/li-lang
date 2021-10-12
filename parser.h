@@ -48,13 +48,14 @@ typedef struct AstNode {
                 EXPR_LITERAL,
                 EXPR_CALL,
                 EXPR_ASM,
-                EXPR_BUILTIN,
                 EXPR_CAST,
                 EXPR_IF_ELSE,
                 EXPR_LOCAL_SCOPE,
                 EXPR_LOOP,
                 EXPR_GOTO,
-                EXPR_RETURN
+                EXPR_RETURN,
+                // temporary frontend state. not passed to middle/backend
+                EXPR_FE_OPERATOR,
             } type;
 
             TypeId eval_type;
@@ -62,7 +63,7 @@ typedef struct AstNode {
             union {
                 struct {
                     enum LiteralType {
-                        LIT_VOID, LIT_U8, LIT_U16, LIT_INT_ANY /* not passed to backend */, LIT_STR, LIT_ARRAY, LIT_BOOL
+                        LIT_VOID, LIT_U8, LIT_U16, LIT_I8, LIT_I16, LIT_INT_ANY /* not passed to backend */, LIT_STR, LIT_ARRAY, LIT_BOOL
                     } type;
 
                     union {
@@ -86,7 +87,7 @@ typedef struct AstNode {
                 struct {
                     Str var_name;
                     TypeId var_type;
-                    NodeIdx value; // this is kept, but actually a BUILTIN_ASSIGN is inserted into the body
+                    NodeIdx value; // this is kept, but actually a OPERATOR_ASSIGN is inserted into the body
                     NodeIdx scoped_expr;
                 } local_scope;
 
@@ -117,44 +118,44 @@ typedef struct AstNode {
                 struct {
                     NodeIdx arg1;
                     NodeIdx arg2;
-                    enum BuiltinOp {
-                        BUILTIN_ADD,
-                        BUILTIN_SUB,
-                        BUILTIN_BITAND,
-                        BUILTIN_BITOR,
-                        BUILTIN_BITXOR,
-                        BUILTIN_LOGICAL_AND,
-                        BUILTIN_LOGICAL_OR,
-                        BUILTIN_UNARY_LOGICAL_NOT,
-                        BUILTIN_MUL,
-                        BUILTIN_DIV,
-                        BUILTIN_MODULO,
-                        BUILTIN_ASSIGN,
-                        BUILTIN_PLUSASSIGN,
-                        BUILTIN_MINUSASSIGN,
-                        BUILTIN_MULASSIGN,
-                        BUILTIN_DIVASSIGN,
-                        BUILTIN_MODASSIGN,
-                        BUILTIN_LSHIFTASSIGN,
-                        BUILTIN_RSHIFTASSIGN,
-                        BUILTIN_BITANDASSIGN,
-                        BUILTIN_BITORASSIGN,
-                        BUILTIN_BITXORASSIGN,
-                        BUILTIN_EQ,
-                        BUILTIN_NEQ,
-                        BUILTIN_LT,
-                        BUILTIN_GT,
-                        BUILTIN_LTE,
-                        BUILTIN_GTE,
-                        BUILTIN_SHIFT_LEFT,
-                        BUILTIN_SHIFT_RIGHT,
-                        BUILTIN_ARRAY_INDEXING,
-                        BUILTIN_UNARY_NEG,
-                        BUILTIN_UNARY_ADDRESSOF,
-                        BUILTIN_UNARY_DEREF,
-                        BUILTIN_UNARY_BITNOT,
+                    enum OperatorOp {
+                        OPERATOR_ADD,
+                        OPERATOR_SUB,
+                        OPERATOR_BITAND,
+                        OPERATOR_BITOR,
+                        OPERATOR_BITXOR,
+                        OPERATOR_LOGICAL_AND,
+                        OPERATOR_LOGICAL_OR,
+                        OPERATOR_UNARY_LOGICAL_NOT,
+                        OPERATOR_MUL,
+                        OPERATOR_DIV,
+                        OPERATOR_MODULO,
+                        OPERATOR_ASSIGN,
+                        OPERATOR_PLUSASSIGN,
+                        OPERATOR_MINUSASSIGN,
+                        OPERATOR_MULASSIGN,
+                        OPERATOR_DIVASSIGN,
+                        OPERATOR_MODASSIGN,
+                        OPERATOR_LSHIFTASSIGN,
+                        OPERATOR_RSHIFTASSIGN,
+                        OPERATOR_BITANDASSIGN,
+                        OPERATOR_BITORASSIGN,
+                        OPERATOR_BITXORASSIGN,
+                        OPERATOR_EQ,
+                        OPERATOR_NEQ,
+                        OPERATOR_LT,
+                        OPERATOR_GT,
+                        OPERATOR_LTE,
+                        OPERATOR_GTE,
+                        OPERATOR_SHIFT_LEFT,
+                        OPERATOR_SHIFT_RIGHT,
+                        OPERATOR_ARRAY_INDEXING,
+                        OPERATOR_UNARY_NEG,
+                        OPERATOR_UNARY_ADDRESSOF,
+                        OPERATOR_UNARY_DEREF,
+                        OPERATOR_UNARY_BITNOT,
                     } op;
-                } builtin;
+                } fe_operator;
 
                 struct {
                     NodeIdx arg;
@@ -176,7 +177,7 @@ typedef struct TokenCursor {
 } TokenCursor;
 
 extern void init_parser();
-extern const char* builtin_name(enum BuiltinOp op);
+extern const char* operator_name(enum OperatorOp op);
 extern void parse_file(Program *prog, const char *filename);
 extern void print_ast(NodeIdx nidx, int depth);
 AstNode *get_node(NodeIdx idx);

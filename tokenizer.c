@@ -59,6 +59,8 @@ const char *token_type_cstr(enum TokType type) {
         case T_LITERAL_STR: return "literal str";
         case T_LITERAL_U8: return "literal u8";
         case T_LITERAL_U16: return "literal u16";
+        case T_LITERAL_I8: return "literal i8";
+        case T_LITERAL_I16: return "literal i16";
         case T_LITERAL_ANY_INT: return "literal any int";
         case T_LITERAL_TRUE: return "literal true";
         case T_LITERAL_FALSE: return "literal false";
@@ -275,8 +277,14 @@ Vec lex(Str buf, const char *filename) {
                 if (*pos == 'u' && LOOK_AHEAD() == '8') {
                     t.type = T_LITERAL_U8;
                     pos += 2;
+                } else if (*pos == 'i' && LOOK_AHEAD() == '8') {
+                    t.type = T_LITERAL_I8;
+                    pos += 2;
                 } else if (*pos == 'u' && LOOK_AHEAD() == '1' && LOOK_AHEAD2() == '6') {
                     t.type = T_LITERAL_U16;
+                    pos += 3;
+                } else if (*pos == 'i' && LOOK_AHEAD() == '1' && LOOK_AHEAD2() == '6') {
+                    t.type = T_LITERAL_I16;
                     pos += 3;
                 } else {
                     t.type = T_LITERAL_ANY_INT;
@@ -299,8 +307,14 @@ Vec lex(Str buf, const char *filename) {
                 if (*pos == 'u' && LOOK_AHEAD() == '8') {
                     t.type = T_LITERAL_U8;
                     pos += 2;
+                } else if (*pos == 'i' && LOOK_AHEAD() == '8') {
+                    t.type = T_LITERAL_I8;
+                    pos += 2;
                 } else if (*pos == 'u' && LOOK_AHEAD() == '1' && LOOK_AHEAD2() == '6') {
                     t.type = T_LITERAL_U16;
+                    pos += 3;
+                } else if (*pos == 'i' && LOOK_AHEAD() == '1' && LOOK_AHEAD2() == '6') {
+                    t.type = T_LITERAL_I16;
                     pos += 3;
                 } else {
                     t.type = T_LITERAL_ANY_INT;

@@ -6,43 +6,43 @@
 
 static Vec _node_alloc;
 
-const char* builtin_name(enum BuiltinOp op) {
+const char* operator_name(enum OperatorOp op) {
     switch (op) {
-        case BUILTIN_ADD: return "add";
-        case BUILTIN_SUB: return "subtract";
-        case BUILTIN_BITAND: return "bitwise and";
-        case BUILTIN_BITOR: return "bitwise or";
-        case BUILTIN_BITXOR: return "bitwise xor";
-        case BUILTIN_LOGICAL_AND: return "logical and";
-        case BUILTIN_LOGICAL_OR: return "logical or";
-        case BUILTIN_UNARY_LOGICAL_NOT: return "logical not";
-        case BUILTIN_MUL: return "multiply";
-        case BUILTIN_DIV: return "divide";
-        case BUILTIN_MODULO: return "modulo";
-        case BUILTIN_ASSIGN: return "assignment";
-        case BUILTIN_PLUSASSIGN: return "+=";
-        case BUILTIN_MINUSASSIGN: return "-=";
-        case BUILTIN_MULASSIGN: return "*=";
-        case BUILTIN_DIVASSIGN: return "/=";
-        case BUILTIN_MODASSIGN: return "%=";
-        case BUILTIN_LSHIFTASSIGN: return "<<=";
-        case BUILTIN_RSHIFTASSIGN: return ">>=";
-        case BUILTIN_BITANDASSIGN: return "&=";
-        case BUILTIN_BITORASSIGN: return "|=";
-        case BUILTIN_BITXORASSIGN: return "^=";
-        case BUILTIN_EQ: return "equality";
-        case BUILTIN_NEQ: return "inequality";
-        case BUILTIN_LT: return "less than";
-        case BUILTIN_GT: return "greater than";
-        case BUILTIN_LTE: return "less than or equal to";
-        case BUILTIN_GTE: return "greater than or equal to";
-        case BUILTIN_SHIFT_LEFT: return "left shift";
-        case BUILTIN_SHIFT_RIGHT: return "right shift";
-        case BUILTIN_ARRAY_INDEXING: return "array indexing";
-        case BUILTIN_UNARY_NEG: return "unary negation";
-        case BUILTIN_UNARY_ADDRESSOF: return "address of";
-        case BUILTIN_UNARY_DEREF: return "pointer dereference";
-        case BUILTIN_UNARY_BITNOT: return "bitwise not";
+        case OPERATOR_ADD: return "add";
+        case OPERATOR_SUB: return "subtract";
+        case OPERATOR_BITAND: return "bitwise and";
+        case OPERATOR_BITOR: return "bitwise or";
+        case OPERATOR_BITXOR: return "bitwise xor";
+        case OPERATOR_LOGICAL_AND: return "logical and";
+        case OPERATOR_LOGICAL_OR: return "logical or";
+        case OPERATOR_UNARY_LOGICAL_NOT: return "logical not";
+        case OPERATOR_MUL: return "multiply";
+        case OPERATOR_DIV: return "divide";
+        case OPERATOR_MODULO: return "modulo";
+        case OPERATOR_ASSIGN: return "assignment";
+        case OPERATOR_PLUSASSIGN: return "+=";
+        case OPERATOR_MINUSASSIGN: return "-=";
+        case OPERATOR_MULASSIGN: return "*=";
+        case OPERATOR_DIVASSIGN: return "/=";
+        case OPERATOR_MODASSIGN: return "%=";
+        case OPERATOR_LSHIFTASSIGN: return "<<=";
+        case OPERATOR_RSHIFTASSIGN: return ">>=";
+        case OPERATOR_BITANDASSIGN: return "&=";
+        case OPERATOR_BITORASSIGN: return "|=";
+        case OPERATOR_BITXORASSIGN: return "^=";
+        case OPERATOR_EQ: return "equality";
+        case OPERATOR_NEQ: return "inequality";
+        case OPERATOR_LT: return "less than";
+        case OPERATOR_GT: return "greater than";
+        case OPERATOR_LTE: return "less than or equal to";
+        case OPERATOR_GTE: return "greater than or equal to";
+        case OPERATOR_SHIFT_LEFT: return "left shift";
+        case OPERATOR_SHIFT_RIGHT: return "right shift";
+        case OPERATOR_ARRAY_INDEXING: return "array indexing";
+        case OPERATOR_UNARY_NEG: return "unary negation";
+        case OPERATOR_UNARY_ADDRESSOF: return "address of";
+        case OPERATOR_UNARY_DEREF: return "pointer dereference";
+        case OPERATOR_UNARY_BITNOT: return "bitwise not";
     }
     assert(false);
 }
@@ -229,37 +229,9 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                 return expr;
             }
         case T_LITERAL_U8:
-            {
-                NodeIdx expr = alloc_node();
-                set_node(expr, &(AstNode) {
-                    .start_token = t,
-                    .type = AST_EXPR,
-                    .expr = {
-                        .type = EXPR_LITERAL,
-                        .literal = {
-                            .type = LIT_U8,
-                            .literal_int = t->int_literal
-                        }
-                    }
-                });
-                return expr;
-            }
         case T_LITERAL_U16:
-            {
-                NodeIdx expr = alloc_node();
-                set_node(expr, &(AstNode) {
-                    .start_token = t,
-                    .type = AST_EXPR,
-                    .expr = {
-                        .type = EXPR_LITERAL,
-                        .literal = {
-                            .type = LIT_U16,
-                            .literal_int = t->int_literal
-                        }
-                    }
-                });
-                return expr;
-            }
+        case T_LITERAL_I8:
+        case T_LITERAL_I16:
         case T_LITERAL_ANY_INT:
             {
                 NodeIdx expr = alloc_node();
@@ -269,7 +241,17 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
                     .expr = {
                         .type = EXPR_LITERAL,
                         .literal = {
-                            .type = LIT_INT_ANY,
+                            .type = t->type == T_LITERAL_U8
+                                ? LIT_U8
+                                : t->type == T_LITERAL_I8
+                                ? LIT_I8
+                                : t->type == T_LITERAL_U16
+                                ? LIT_U16
+                                : t->type == T_LITERAL_I16
+                                ? LIT_I16
+                                : t->type == T_LITERAL_ANY_INT
+                                ? LIT_INT_ANY
+                                : (assert(false), 0),
                             .literal_int = t->int_literal
                         }
                     }
@@ -386,7 +368,7 @@ static NodeIdx parse_primary_expression(TokenCursor *toks) {
         case T_ASM:
             return parse_asm_literal(t);
         default:
-            parse_error("Expected primary expression", 0, t);
+            fatal_error(t, "Expected primary expression but found %s", token_type_cstr(t->type));
     }
 }
 
@@ -439,9 +421,9 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                 .type = AST_EXPR,
                 .start_token = start_token,
                 .expr = {
-                    .type = EXPR_BUILTIN,
-                    .builtin = {
-                        .op = BUILTIN_ARRAY_INDEXING,
+                    .type = EXPR_FE_OPERATOR,
+                    .fe_operator = {
+                        .op = OPERATOR_ARRAY_INDEXING,
                         .arg1 = arg1,
                         .arg2 = arg2,
                     }
@@ -457,9 +439,9 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                 .type = AST_EXPR,
                 .start_token = start_token,
                 .expr = {
-                    .type = EXPR_BUILTIN,
-                    .builtin = {
-                        .op = BUILTIN_UNARY_DEREF,
+                    .type = EXPR_FE_OPERATOR,
+                    .fe_operator = {
+                        .op = OPERATOR_UNARY_DEREF,
                         .arg1 = arg1,
                         .arg2 = 0
                     }
@@ -475,9 +457,9 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
                 .type = AST_EXPR,
                 .start_token = start_token,
                 .expr = {
-                    .type = EXPR_BUILTIN,
-                    .builtin = {
-                        .op = BUILTIN_UNARY_ADDRESSOF,
+                    .type = EXPR_FE_OPERATOR,
+                    .fe_operator = {
+                        .op = OPERATOR_UNARY_ADDRESSOF,
                         .arg1 = arg1,
                         .arg2 = 0
                     }
@@ -524,14 +506,14 @@ static NodeIdx parse_unary_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
                     .op = t->type == T_MINUS
-                        ? BUILTIN_UNARY_NEG
+                        ? OPERATOR_UNARY_NEG
                         : t->type == T_EXCLAMATION
-                        ? BUILTIN_UNARY_LOGICAL_NOT
+                        ? OPERATOR_UNARY_LOGICAL_NOT
                         : t->type == T_TILDE
-                        ? BUILTIN_UNARY_BITNOT
+                        ? OPERATOR_UNARY_BITNOT
                         : (assert(false), 0),
                     .arg1 = arg1,
                     .arg2 = 0
@@ -559,14 +541,14 @@ static NodeIdx parse_multiplicative_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
                     .op = t->type == T_ASTERISK
-                        ? BUILTIN_MUL
+                        ? OPERATOR_MUL
                         : t->type == T_SLASH
-                        ? BUILTIN_DIV
+                        ? OPERATOR_DIV
                         : t->type == T_PERCENT
-                        ? BUILTIN_MODULO
+                        ? OPERATOR_MODULO
                         : (assert(false), 0),
                     .arg1 = arg1,
                     .arg2 = arg2,
@@ -613,16 +595,16 @@ static NodeIdx parse_additive_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
                     .op = (
-                        t->type == T_PLUS ? BUILTIN_ADD
-                        : t->type == T_MINUS ? BUILTIN_SUB
-                        : t->type == T_SHIFT_LEFT ? BUILTIN_SHIFT_LEFT
-                        : t->type == T_SHIFT_RIGHT ? BUILTIN_SHIFT_RIGHT
-                        : t->type == T_AMPERSAND ? BUILTIN_BITAND
-                        : t->type == T_PIPE ? BUILTIN_BITOR
-                        : t->type == T_ACUTE ? BUILTIN_BITXOR
+                        t->type == T_PLUS ? OPERATOR_ADD
+                        : t->type == T_MINUS ? OPERATOR_SUB
+                        : t->type == T_SHIFT_LEFT ? OPERATOR_SHIFT_LEFT
+                        : t->type == T_SHIFT_RIGHT ? OPERATOR_SHIFT_RIGHT
+                        : t->type == T_AMPERSAND ? OPERATOR_BITAND
+                        : t->type == T_PIPE ? OPERATOR_BITOR
+                        : t->type == T_ACUTE ? OPERATOR_BITXOR
                         : (assert(false), 0)
                     ),
                     .arg1 = arg1,
@@ -663,9 +645,9 @@ static NodeIdx parse_logical_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
-                    .op = t->type == T_PIPE ? BUILTIN_LOGICAL_OR : BUILTIN_LOGICAL_AND,
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
+                    .op = t->type == T_PIPE ? OPERATOR_LOGICAL_OR : OPERATOR_LOGICAL_AND,
                     .arg1 = arg1,
                     .arg2 = arg2,
                 }
@@ -695,20 +677,20 @@ static NodeIdx parse_comparison_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
                     .op = t->type == T_EQ
-                          ? BUILTIN_EQ
+                          ? OPERATOR_EQ
                           : t->type == T_NEQ
-                          ? BUILTIN_NEQ
+                          ? OPERATOR_NEQ
                           : t->type == T_GT
-                          ? BUILTIN_GT
+                          ? OPERATOR_GT
                           : t->type == T_LT
-                          ? BUILTIN_LT
+                          ? OPERATOR_LT
                           : t->type == T_GTE
-                          ? BUILTIN_GTE
+                          ? OPERATOR_GTE
                           : t->type == T_LTE
-                          ? BUILTIN_LTE
+                          ? OPERATOR_LTE
                           : (assert(false), 0),
                     .arg1 = arg1,
                     .arg2 = arg2,
@@ -869,30 +851,30 @@ static NodeIdx parse_assignment_expression(TokenCursor *toks) {
             .type = AST_EXPR,
             .start_token = t,
             .expr = {
-                .type = EXPR_BUILTIN,
-                .builtin = {
+                .type = EXPR_FE_OPERATOR,
+                .fe_operator = {
                     .op = t->type == T_ASSIGN
-                        ? BUILTIN_ASSIGN
+                        ? OPERATOR_ASSIGN
                         : t->type == T_PLUSASSIGN
-                        ? BUILTIN_PLUSASSIGN
+                        ? OPERATOR_PLUSASSIGN
                         : t->type == T_MINUSASSIGN
-                        ? BUILTIN_MINUSASSIGN
+                        ? OPERATOR_MINUSASSIGN
                         : t->type == T_MULASSIGN
-                        ? BUILTIN_MULASSIGN
+                        ? OPERATOR_MULASSIGN
                         : t->type == T_DIVASSIGN
-                        ? BUILTIN_DIVASSIGN
+                        ? OPERATOR_DIVASSIGN
                         : t->type == T_MODASSIGN
-                        ? BUILTIN_MODASSIGN
+                        ? OPERATOR_MODASSIGN
                         : t->type == T_LSHIFTASSIGN
-                        ? BUILTIN_LSHIFTASSIGN
+                        ? OPERATOR_LSHIFTASSIGN
                         : t->type == T_RSHIFTASSIGN
-                        ? BUILTIN_RSHIFTASSIGN
+                        ? OPERATOR_RSHIFTASSIGN
                         : t->type == T_BITANDASSIGN
-                        ? BUILTIN_BITANDASSIGN
+                        ? OPERATOR_BITANDASSIGN
                         : t->type == T_BITORASSIGN
-                        ? BUILTIN_BITORASSIGN
+                        ? OPERATOR_BITORASSIGN
                         : t->type == T_BITXORASSIGN
-                        ? BUILTIN_BITXORASSIGN
+                        ? OPERATOR_BITXORASSIGN
                         : (assert(false), 0),
                     .arg1 = arg1,
                     .arg2 = arg2,
@@ -909,7 +891,7 @@ static NodeIdx parse_expression(TokenCursor *toks) {
 }
 
 /*
- * Insert an assignment builtin at the beginning of `scoped_expr`,
+ * Insert an assignment operator at the beginning of `scoped_expr`,
  * assigning `ident` = `value`
  * Returns NodeIdx of modified scoped_expr
  */
@@ -933,9 +915,9 @@ static NodeIdx insert_assignment(NodeIdx scoped_expr, const Token *ident, NodeId
         .type = AST_EXPR,
         .start_token = ident,
         .expr = {
-            .type = EXPR_BUILTIN,
-            .builtin = {
-                .op = BUILTIN_ASSIGN,
+            .type = EXPR_FE_OPERATOR,
+            .fe_operator = {
+                .op = OPERATOR_ASSIGN,
                 .arg1 = ident_expr,
                 .arg2 = value
             }
@@ -1487,11 +1469,20 @@ void print_ast(NodeIdx nidx, int depth) {
                     break;
                 case EXPR_LITERAL:
                     switch (node->expr.literal.type) {
+                        case LIT_BOOL:
+                            printf("literal bool (%s)\n", node->expr.literal.literal_bool ? "true" : "false");
+                            break;
                         case LIT_U8:
                             printf("literal u8 (%d)\n", node->expr.literal.literal_int);
                             break;
                         case LIT_U16:
                             printf("literal u16 (%d)\n", node->expr.literal.literal_int);
+                            break;
+                        case LIT_I8:
+                            printf("literal i8 (%d)\n", node->expr.literal.literal_int);
+                            break;
+                        case LIT_I16:
+                            printf("literal i16 (%d)\n", node->expr.literal.literal_int);
                             break;
                         case LIT_INT_ANY:
                             printf("literal any int (%d)\n", node->expr.literal.literal_int);
@@ -1544,13 +1535,13 @@ void print_ast(NodeIdx nidx, int depth) {
                         print_ast(arg, depth+2);
                     }
                     break;
-                case EXPR_BUILTIN:
-                    printf("expr_builtin (%s)\n", builtin_name(node->expr.builtin.op));
+                case EXPR_FE_OPERATOR:
+                    printf("expr_operator (%s)\n", operator_name(node->expr.fe_operator.op));
                     _indent(depth+2);
                     printf("args\n");
-                    print_ast(node->expr.builtin.arg1, depth+2);
-                    if (node->expr.builtin.arg2) {
-                        print_ast(node->expr.builtin.arg2, depth+2);
+                    print_ast(node->expr.fe_operator.arg1, depth+2);
+                    if (node->expr.fe_operator.arg2) {
+                        print_ast(node->expr.fe_operator.arg2, depth+2);
                     }
                     break;
                 case EXPR_RETURN:

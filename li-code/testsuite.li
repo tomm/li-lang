@@ -211,6 +211,7 @@ fn main() {
     expect(shl_u8(6, 3) == 48)
     expect(shr_u8(191, 0) == 191)
     expect(shr_u8(191, 3) == 23)
+    //expect(shr_i8(-20, 2) == -5)
     expect(shl_u16(6789, 0) == 6789)
     expect(shl_u16(6789, 3) == 54312)
     expect(shr_u16(6789, 0) == 6789)
@@ -339,6 +340,8 @@ fn mul_u8(a: u8, b: u8) -> u8 { a * b }
 fn mul_u16(a: u16, b: u16) -> u16 { a * b }
 fn shl_u8(a: u8, b: u8) -> u8 { a << b }
 fn shr_u8(a: u8, b: u8) -> u8 { a >> b }
+//fn shl_i8(a: i8, b: i8) -> i8 { a << b }
+//fn shr_i8(a: i8, b: i8) -> i8 { a >> b }
 fn shl_u16(a: u16, b: u16) -> u16 { a << b }
 fn shr_u16(a: u16, b: u16) -> u16 { a >> b }
 

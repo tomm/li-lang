@@ -62,101 +62,134 @@ static JumpLabel *label_lookup(Scope *scope, Str *name) {
 
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint);
 
-typedef struct ValidBuiltin {
-    enum BuiltinOp op;
+typedef struct ValidOperator {
+    enum OperatorOp op;
     enum TypeType arg1;
     enum TypeType arg2;
     TypeId ret;
-} ValidBuiltin;
+} ValidOperator;
 
-static const ValidBuiltin valid_builtins[] = {
-    { BUILTIN_UNARY_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
-    { BUILTIN_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
-    { BUILTIN_ASSIGN, -1, -1, -1 },
-    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
-    { BUILTIN_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
-    { BUILTIN_ADD, TT_PTR, TT_PRIM_U16, -1 },
-    { BUILTIN_SUB, TT_PTR, TT_PRIM_U16, -1 },
-    { BUILTIN_PLUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
-    { BUILTIN_MINUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
+static const ValidOperator valid_operators[] = {
+    { OPERATOR_UNARY_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
+    { OPERATOR_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
+    { OPERATOR_ASSIGN, -1, -1, -1 },
+    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
+    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
+    { OPERATOR_ADD, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_SUB, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_PLUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_MINUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
 
-    { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_SHIFT_LEFT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_SUB, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_NEQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_EQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_GT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_LT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_GTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_LTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { BUILTIN_MUL, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_DIV, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_MODULO, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITXOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_MULASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_DIVASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_MODASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITANDASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_BITXORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { BUILTIN_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
-    { BUILTIN_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    { OPERATOR_UNARY_NEG, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SHIFT_LEFT, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SUB, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_NEQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_EQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_GT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_LT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_GTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_LTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_MUL, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_DIV, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MODULO, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITXOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MULASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_DIVASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MODASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITANDASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITXORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    { OPERATOR_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
 
-    { BUILTIN_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_NEQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_EQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_GT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_LT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_GTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_LTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { BUILTIN_MUL, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_DIV, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_MODULO, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITXOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { BUILTIN_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
-    { BUILTIN_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    { OPERATOR_UNARY_NEG, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_SHIFT_LEFT, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_SHIFT_RIGHT, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_ADD, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_SUB, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_NEQ, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_EQ, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_GT, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_LT, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_GTE, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_LTE, TT_PRIM_I8, TT_PRIM_I8, BOOL },
+    { OPERATOR_MUL, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_DIV, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_MODULO, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITXOR, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITAND, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITOR, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_PLUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_MINUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_MULASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_DIVASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_MODASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_LSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_RSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITANDASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITORASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_BITXORASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_ASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
+    { OPERATOR_UNARY_NEG, TT_PRIM_I8, TT_PRIM_VOID, I8 },
+    { OPERATOR_UNARY_BITNOT, TT_PRIM_I8, TT_PRIM_VOID, I8 },
+
+    { OPERATOR_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_NEQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_EQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_GT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_LT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_GTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_LTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_MUL, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_DIV, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MODULO, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITXOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    { OPERATOR_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     
-    { BUILTIN_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, BOOL },
-    { BUILTIN_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
-    { BUILTIN_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    { OPERATOR_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, BOOL },
+    { OPERATOR_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    { OPERATOR_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
     { -1 }
 };
 
 static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
     AstNode *n = get_node(expr);
-    enum BuiltinOp op = n->expr.builtin.op;
-    assert(op == BUILTIN_UNARY_NEG);
+    enum OperatorOp op = n->expr.fe_operator.op;
+    assert(op == OPERATOR_UNARY_NEG);
 
-    AstNode *a = get_node(n->expr.builtin.arg1);
+    AstNode *a = get_node(n->expr.fe_operator.arg1);
     if (a->expr.type == EXPR_LITERAL &&
         (a->expr.literal.type == LIT_INT_ANY ||
          a->expr.literal.type == LIT_U8 ||
+         a->expr.literal.type == LIT_I8 ||
+         a->expr.literal.type == LIT_I16 ||
          a->expr.literal.type == LIT_U16)) {
-        // turn BUILTIN_UNARY_NEG node into the literal node directly
+        // turn OPERATOR_UNARY_NEG node into the literal node directly
         NodeIdx next_sibling = n->next_sibling;
         *n = *a;
         n->next_sibling = next_sibling;
@@ -169,9 +202,9 @@ static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId
 }
 
 /* Pass -1 for TypeType to find any */
-static const struct ValidBuiltin *find_first_matching_builtin(enum BuiltinOp op, enum TypeType t1, enum TypeType t2) {
-    for (int i=0; valid_builtins[i].op != -1; ++i) {
-        const struct ValidBuiltin *v = &valid_builtins[i];
+static const struct ValidOperator *find_first_matching_operator(enum OperatorOp op, enum TypeType t1, enum TypeType t2) {
+    for (int i=0; valid_operators[i].op != -1; ++i) {
+        const struct ValidOperator *v = &valid_operators[i];
         if (v->op == op && (v->arg1 == t1 || t1 == -1) && (v->arg2 == t2 || t2 == -1)) {
             return v;
         }
@@ -182,22 +215,24 @@ static const struct ValidBuiltin *find_first_matching_builtin(enum BuiltinOp op,
 static TypeId int_typekind_to_typeid(enum TypeType typekind) {
     switch (typekind) {
         case TT_PRIM_U8: return U8;
+        case TT_PRIM_I8: return I8;
         case TT_PRIM_U16: return U16;
+        case TT_PRIM_I16: return I16;
         default: return TYPE_UNKNOWN;
     }
 }
 
-static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeId expr_type_hint) {
+static TypeId typecheck_operator(Program *prog, Scope *scope, NodeIdx expr, TypeId expr_type_hint) {
     AstNode *n = get_node(expr);
-    enum BuiltinOp op = n->expr.builtin.op;
+    enum OperatorOp op = n->expr.fe_operator.op;
 
-    const int num_args = n->expr.builtin.arg2 == 0 ? 1 : 2;
+    const int num_args = n->expr.fe_operator.arg2 == 0 ? 1 : 2;
 
-    NodeIdx arg1 = n->expr.builtin.arg1;
-    NodeIdx arg2 = n->expr.builtin.arg2;
+    NodeIdx arg1 = n->expr.fe_operator.arg1;
+    NodeIdx arg2 = n->expr.fe_operator.arg2;
 
     /* Mandatory optimization... fold unary negative operator on constants -- needed for globals */
-    if (op == BUILTIN_UNARY_NEG) {
+    if (op == OPERATOR_UNARY_NEG) {
         if (try_fold_unary_neg(prog, scope, expr, expr_type_hint)) {
             return get_node(expr)->expr.eval_type;
         }
@@ -210,7 +245,7 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
     t1 = typecheck_expr(prog, scope, arg1, TYPE_UNKNOWN);
 
     // special type hint for assignment operator
-    TypeId hint = op == BUILTIN_ASSIGN ? t1 : TYPE_UNKNOWN;
+    TypeId hint = op == OPERATOR_ASSIGN ? t1 : TYPE_UNKNOWN;
     t2 = num_args == 2 ? typecheck_expr(prog, scope, arg2, hint) : VOID;
 
     enum TypeType tt1 = get_type(t1)->type;
@@ -221,12 +256,12 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
         t2 = typecheck_expr(prog, scope, arg2, expr_type_hint);
     }
     else if (t1 == TYPE_UNKNOWN) {
-        const struct ValidBuiltin *b = find_first_matching_builtin(op, -1, tt2);
+        const struct ValidOperator *b = find_first_matching_operator(op, -1, tt2);
         TypeId hint = b ? int_typekind_to_typeid(b->arg1) : t2;
         t1 = typecheck_expr(prog, scope, arg1, hint);
     }
     else if (t2 == TYPE_UNKNOWN) {
-        const struct ValidBuiltin *b = find_first_matching_builtin(op, tt1, -1);
+        const struct ValidOperator *b = find_first_matching_operator(op, tt1, -1);
         TypeId hint = b ? int_typekind_to_typeid(b->arg2) : t1;
         t2 = typecheck_expr(prog, scope, arg2, hint);
     }
@@ -234,35 +269,35 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
     tt1 = get_type(t1)->type;
     tt2 = t2 ? get_type(t2)->type : TT_PRIM_VOID;
 
-    // do the argument types match a valid builtin?
-    for (int i=0; valid_builtins[i].op != -1; ++i) {
-        const ValidBuiltin *v = &valid_builtins[i];
+    // do the argument types match a valid operator?
+    for (int i=0; valid_operators[i].op != -1; ++i) {
+        const ValidOperator *v = &valid_operators[i];
         if (v->op == op &&
             (v->arg1 == -1 || v->arg1 == tt1) &&
             (v->arg2 == -1 || v->arg2 == tt2)) {
             if (v->ret == -1) {
                 // special handling of return type
                 switch (op) {
-                    case BUILTIN_UNARY_ADDRESSOF:
+                    case OPERATOR_UNARY_ADDRESSOF:
                         return make_ptr_type(t1);
-                    case BUILTIN_UNARY_DEREF:
+                    case OPERATOR_UNARY_DEREF:
                         return get_type(t1)->ptr.ref;
-                    case BUILTIN_ADD:
-                    case BUILTIN_SUB:
+                    case OPERATOR_ADD:
+                    case OPERATOR_SUB:
                         if (tt1 == TT_PTR) return t1;
                         else assert(false);
-                    case BUILTIN_ASSIGN:
+                    case OPERATOR_ASSIGN:
                         if (!is_type_eq(t1, t2)) {
                             goto error;
                         }
                         return t1;
-                    case BUILTIN_MINUSASSIGN:
+                    case OPERATOR_MINUSASSIGN:
                         // ptr -= u16
                         return t1;
-                    case BUILTIN_PLUSASSIGN:
+                    case OPERATOR_PLUSASSIGN:
                         // ptr += u16
                         return t1;
-                    case BUILTIN_ARRAY_INDEXING:
+                    case OPERATOR_ARRAY_INDEXING:
                         return get_type(t1)->array.contained;
                     default: assert(false);
                 }
@@ -273,7 +308,7 @@ static TypeId typecheck_builtin(Program *prog, Scope *scope, NodeIdx expr, TypeI
     }
 error:
     fatal_error(n->start_token, "invalid arguments to operator '%s': '%.*s' and '%.*s'",
-            builtin_name(op),
+            operator_name(op),
             (int)get_type(t1)->name.len,
             get_type(t1)->name.s,
             (int)get_type(t2)->name.len,
@@ -281,15 +316,28 @@ error:
 }
 
 static void check_int_literal_range(const Token *t, TypeId type, int val) {
+    // XXX RE-enable this
+    return;
+
     switch (type) {
         case U8:
-            if (val < -128 || val > 255) {
-                fatal_error(t, "U8 literal out of range [-128..255]");
+            if (val < 0 || val > 255) {
+                fatal_error(t, "U8 literal out of range [0..255]");
+            }
+            break;
+        case I8:
+            if (val < -128 || val > 127) {
+                fatal_error(t, "I8 literal out of range [-128..127]");
             }
             break;
         case U16:
-            if (val < -32768 || val > 65535) {
-                fatal_error(t, "U16 literal out of range [-32768..65535]");
+            if (val < 0 || val > 65535) {
+                fatal_error(t, "U16 literal out of range [0..65535]");
+            }
+            break;
+        case I16:
+            if (val < -32768 || val > 32767) {
+                fatal_error(t, "I16 literal out of range [-32768..32767]");
             }
             break;
     }
@@ -336,6 +384,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
 
                 // valid casts in li
                 if (is_type_eq(from_type, t) ||
+                    // casts between signed and unsigned
+                    (from_type == U8 && t == I8) ||
+                    (from_type == I8 && t == U8) ||
+                    (from_type == U16 && t == I16) ||
+                    (from_type == I16 && t == U16) ||
+                    // size changes
                     (from_type == U8 && t == U16) ||
                     (from_type == U16 && t == U8) ||
                     (get_type(t)->type == TT_PTR && from_type == U16) ||
@@ -388,10 +442,15 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     if (type_hint == U8) {
                         t = U8;
                         n->expr.literal.type = LIT_U8;
-                    }
-                    else if (type_hint == U16) {
+                    } else if (type_hint == I8) {
+                        t = I8;
+                        n->expr.literal.type = LIT_I8;
+                    } else if (type_hint == U16) {
                         t = U16;
                         n->expr.literal.type = LIT_U16;
+                    } else if (type_hint == I16) {
+                        t = I16;
+                        n->expr.literal.type = LIT_I16;
                     } else {
                         t = TYPE_UNKNOWN;
                     }
@@ -401,8 +460,16 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     t = U8;
                     check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
                     break;
+                case LIT_I8:
+                    t = I8;
+                    check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
+                    break;
                 case LIT_U16:
                     t = U16;
+                    check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
+                    break;
+                case LIT_I16:
+                    t = I16;
                     check_int_literal_range(n->start_token, t, n->expr.literal.literal_int);
                     break;
                 case LIT_VOID:
@@ -564,8 +631,8 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                 scope_pop(scope);
             }
             break;
-        case EXPR_BUILTIN:
-            t = typecheck_builtin(prog, scope, expr, type_hint);
+        case EXPR_FE_OPERATOR:
+            t = typecheck_operator(prog, scope, expr, type_hint);
             break;
         case EXPR_RETURN:
             {
@@ -630,8 +697,11 @@ static void check_is_constexpr(Program *prog, NodeIdx node) {
         case LIT_ARRAY:
             check_is_constexpr(prog, n->expr.literal.literal_array_first_val);
             break;
+        case LIT_BOOL:
         case LIT_U8:
         case LIT_U16:
+        case LIT_I8:
+        case LIT_I16:
         case LIT_VOID:
         case LIT_STR:
             break;
