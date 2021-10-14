@@ -403,12 +403,6 @@ static Value emit_pop_temporary(Value v, StackFrame *frame, bool to_aux_reg) {
 }
 static Value emit_expression(NodeIdx expr, StackFrame frame);
 
-typedef struct OperatorImpl {
-    enum OperatorOp op;
-    enum TypeType tt1, tt2;
-    Value (*emit)(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2);
-} OperatorImpl;
-
 static void emit_bool_to_z_flag(Value v)
 {
     assert(v.typeId == BOOL);
@@ -416,12 +410,12 @@ static void emit_bool_to_z_flag(Value v)
     _i("and a, a");
 }
 
-Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
 
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
     v1 = emit_pop_temporary(v1, frame, false);
 
@@ -429,50 +423,50 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
     }
     switch (op) {
-        case OPERATOR_ASSIGN:
+        case OP_ASSIGN_8:
             _i("ld a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_PLUSASSIGN:
+        case OP_ADD_ASSIGN_8:
             _i("ld a, [hl]");
             _i("add a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_MINUSASSIGN:
+        case OP_SUB_ASSIGN_8:
             _i("ld a, [hl]");
             _i("sub a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_BITANDASSIGN:
+        case OP_AND_ASSIGN_8:
             _i("ld a, [hl]");
             _i("and a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_BITORASSIGN:
+        case OP_OR_ASSIGN_8:
             _i("ld a, [hl]");
             _i("or a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_BITXORASSIGN:
+        case OP_XOR_ASSIGN_8:
             _i("ld a, [hl]");
             _i("xor a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_MULASSIGN:
+        case OP_MUL_ASSIGN_8:
             _i("ld a, [hl]");
             _i("push hl");
             _i("call __mulu8");
             _i("pop hl");
             _i("ld [hl], a");
             break;
-        case OPERATOR_DIVASSIGN:
+        case OP_DIV_ASSIGN_8:
             _i("ld a, [hl]");
             _i("push hl");
             _i("call __divu8");
             _i("pop hl");
             _i("ld [hl], a");
             break;
-        case OPERATOR_MODASSIGN:
+        case OP_MOD_ASSIGN_8:
             _i("ld a, [hl]");
             _i("push hl");
             _i("call __divu8");
@@ -480,8 +474,8 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
             _i("ld a, b");
             _i("ld [hl], a");
             break;
-        case OPERATOR_LSHIFTASSIGN:
-        case OPERATOR_RSHIFTASSIGN:
+        case OP_LSL_ASSIGN_8:
+        case OP_LSR_ASSIGN_8:
             {
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
@@ -491,7 +485,7 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
                 _i("and a");
                 _i("jr z, .l%d", end_label);
                 _i("dec a");
-                _i("%s c", op == OPERATOR_LSHIFTASSIGN ? "sla" : "srl");
+                _i("%s c", op == OP_LSL_ASSIGN_8 ? "sla" : "srl");
                 _i("jr .l%d", start_label);
                 _label(end_label);
                 _i("ld a, c");
@@ -504,9 +498,9 @@ Value emit_assign_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
     return (Value) { .typeId = U8, .storage = ST_REG_VAL };
 }
 
-Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
     v = emit_value_to_register(v, false); // v in `hl`
     assert(get_type(v.typeId)->type == TT_PTR);
 
@@ -514,9 +508,9 @@ Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
     return (Value) { .typeId = get_type(v.typeId)->ptr.ref, .storage = ST_REG_EA };
 }
 
-Value emit_addressof(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_addressof(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     if (v.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not take address of temporary");
@@ -526,9 +520,9 @@ Value emit_addressof(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
     return (Value) { .typeId = make_ptr_type(v.typeId), .storage = ST_REG_VAL };
 }
 
-Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx _) {
+Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx _) {
     AstNode *n = get_node(expr);
-    Value v = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     const int false_label = _local_label_seq++;
     v = emit_value_to_register(v, false);   // v in `a`
@@ -540,19 +534,19 @@ Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum OperatorOp op, Node
     return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
 }
 
-Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    //AstNode *arg = get_node(n->expr.fe_operator.arg1);
+    //AstNode *arg = get_node(n->expr.builtin.arg1);
 
-    Value v = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     switch (op) {
-        case OPERATOR_UNARY_NEG:
+        case OP_UNARY_NEG_8:
             v = emit_value_to_register(v, true);   // v in `b`
             _i("xor a");
             _i("sub a, b");
             return (Value) { .typeId = U8, .storage = ST_REG_VAL };
-        case OPERATOR_UNARY_BITNOT:
+        case OP_NOT_8:
             v = emit_value_to_register(v, false);   // v in `a`
             _i("cpl");
             return (Value) { .typeId = U8, .storage = ST_REG_VAL };
@@ -561,11 +555,11 @@ Value emit_unary_math_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, No
     }
 }
 
-Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     assert(get_type(v1.typeId)->type == TT_ARRAY);
     assert(v1.storage == ST_REG_EA);
@@ -585,11 +579,11 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
 
-Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     assert(get_type(v1.typeId)->type == TT_PTR);
     const Type *ref = get_type(get_type(v1.typeId)->ptr.ref);
@@ -603,9 +597,9 @@ Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, N
     }
     v1 = emit_pop_temporary(v1, frame, false);
     v1 = emit_value_to_register(v1, false);   // v1 in `hl`
-    if (op == OPERATOR_ADD) {
+    if (op == OP_PTR_ADD) {
         _i("add hl, de");
-    } else if (op == OPERATOR_SUB) {
+    } else if (op == OP_PTR_SUB) {
         _i("ld a, l");
         _i("sub a, e");
         _i("ld l, a");
@@ -619,11 +613,11 @@ Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, N
     return (Value) { .storage = ST_REG_VAL, .typeId = v1.typeId };
 }
 
-Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     assert(get_type(v1.typeId)->type == TT_ARRAY);
     assert(v1.storage == ST_REG_EA);
@@ -641,18 +635,18 @@ Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp o
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
 
-Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg1 = get_node(n->expr.fe_operator.arg1);
-    AstNode *arg2 = get_node(n->expr.fe_operator.arg2);
+    AstNode *arg1 = get_node(n->expr.builtin.arg1);
+    AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
     const int false_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
     _i("jp z, .l%d", false_label);
 
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
     emit_bool_to_z_flag(v2);
     _i("jp z, .l%d", false_label);
     _i("ld a, 1");
@@ -663,18 +657,18 @@ Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum OperatorOp op, Node
     return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
-Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg1 = get_node(n->expr.fe_operator.arg1);
-    AstNode *arg2 = get_node(n->expr.fe_operator.arg2);
+    AstNode *arg1 = get_node(n->expr.builtin.arg1);
+    AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
     const int true_label = _local_label_seq++;
     const int end_label = _local_label_seq++;
     _i("jp nz, .l%d", true_label);
 
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
     emit_bool_to_z_flag(v2);
     _i("jp nz, .l%d", true_label);
     _i("xor a");
@@ -685,11 +679,11 @@ Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
     return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
-Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `b`
     v1 = emit_pop_temporary(v1, frame, false);
@@ -697,8 +691,8 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx
 
     // assumes binary op
     switch (op) {
-        case OPERATOR_SHIFT_RIGHT:
-        case OPERATOR_SHIFT_LEFT:
+        case OP_LSR_8:
+        case OP_LSL_8:
             {
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
@@ -708,65 +702,65 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx
                 _i("and a");
                 _i("jr z, .l%d", end_label);
                 _i("dec a");
-                _i("%s c", op == OPERATOR_SHIFT_LEFT ? "sla" : v1.typeId == I8 ? "asl" : "srl");
+                _i("%s c", op == OP_LSL_8 ? "sla" : v1.typeId == I8 ? "asl" : "srl");
                 _i("jr .l%d", start_label);
                 _label(end_label);
                 _i("ld a, c");
             }
             break;
-        case OPERATOR_ADD:
+        case OP_ADD_8:
             _i("add a, b");
             break;
-        case OPERATOR_SUB:
+        case OP_SUB_8:
             _i("sub a, b");
             break;
-        case OPERATOR_BITOR:
+        case OP_OR_8:
             _i("or a, b");
             break;
-        case OPERATOR_BITAND:
+        case OP_AND_8:
             _i("and a, b");
             break;
-        case OPERATOR_BITXOR:
+        case OP_XOR_8:
             _i("xor a, b");
             break;
-        case OPERATOR_MUL:
+        case OP_MUL_8:
             _i("call __mulu8");
             break;
-        case OPERATOR_DIV:
+        case OP_DIV_8:
             _i("call __divu8");
             break;
-        case OPERATOR_MODULO:
+        case OP_MOD_8:
             _i("call __divu8");
             _i("ld a, b");
             break;
-        case OPERATOR_NEQ:
-        case OPERATOR_EQ:
+        case OP_NEQ_8:
+        case OP_EQ_8:
             {
                 const int false_label = _local_label_seq++;
                 _i("cp a, b");
                 _i("ld a, 0");
-                _i("jr %s, .l%d", op == OPERATOR_EQ ? "nz" : "z", false_label);
+                _i("jr %s, .l%d", op == OP_EQ_8 ? "nz" : "z", false_label);
                 _i("inc a");
                 _label(false_label);
             }
             return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
-        case OPERATOR_GTE:
-        case OPERATOR_LTE:
+        case OP_GTE_8:
+        case OP_LTE_8:
             {
                 const int true_label = _local_label_seq++;
                 _i("cp a, b");
                 _i("ld a, 1");
-                _i("jr %s, .l%d", op == OPERATOR_GTE ? "nc" : "c", true_label);
+                _i("jr %s, .l%d", op == OP_GTE_8 ? "nc" : "c", true_label);
                 _i("jr z, .l%d", true_label);
                 _i("xor a");
                 _label(true_label);
             }
             return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
-        case OPERATOR_LT:
-        case OPERATOR_GT:
+        case OP_LT_8:
+        case OP_GT_8:
             {
                 const int false_label = _local_label_seq++;
-                const char *cflag = op == OPERATOR_GT ? "c" : "nc";
+                const char *cflag = op == OP_GT_8 ? "c" : "nc";
                 _i("cp a, b");
                 _i("ld a, 0");
                 _i("jr z, .l%d", false_label);
@@ -782,12 +776,12 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v = emit_expression(n->expr.fe_operator.arg1, *frame);
+    Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     switch (op) {
-        case OPERATOR_UNARY_NEG:
+        case OP_UNARY_NEG_16:
             v = emit_value_to_register(v, false); // v in `hl`
             _i("xor a");
             _i("sub a, l");
@@ -796,7 +790,7 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, N
             _i("sbc a, h");
             _i("ld h, a");
             return (Value) { .typeId = U16, .storage = ST_REG_VAL };
-        case OPERATOR_UNARY_BITNOT:
+        case OP_NOT_16:
             v = emit_value_to_register(v, false); // v in `hl`
             _i("ld a, h");
             _i("cpl");
@@ -810,11 +804,11 @@ Value emit_unary_math_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, N
     }
 }
 
-Value emit_assign_array(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
     // v2 (src) in `de`
     _i("ld d, h");
     _i("ld e, l");
@@ -828,11 +822,11 @@ Value emit_assign_array(NodeIdx expr, StackFrame *frame, enum OperatorOp op, Nod
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
 }
 
-Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `de`
     v1 = emit_pop_temporary(v1, frame, false);
@@ -842,13 +836,13 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
     }
 
     switch (op) {
-        case OPERATOR_ASSIGN:
+        case OP_ASSIGN_16:
             _i("ld a, e");
             _i("ld [hl+], a");
             _i("ld a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_PLUSASSIGN:
+        case OP_ADD_ASSIGN_16:
             _i("ld a, [hl]");
             _i("add a, e");
             _i("ld [hl+], a");
@@ -857,7 +851,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("adc a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_MINUSASSIGN:
+        case OP_SUB_ASSIGN_16:
             _i("ld a, [hl]");
             _i("sub a, e");
             _i("ld [hl+], a");
@@ -866,7 +860,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("sbc a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_BITORASSIGN:
+        case OP_OR_ASSIGN_16:
             _i("ld a, [hl]");
             _i("or a, e");
             _i("ld [hl+], a");
@@ -875,7 +869,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("or a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_BITANDASSIGN:
+        case OP_AND_ASSIGN_16:
             _i("ld a, [hl]");
             _i("and a, e");
             _i("ld [hl+], a");
@@ -884,7 +878,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("and a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_BITXORASSIGN:
+        case OP_XOR_ASSIGN_16:
             _i("ld a, [hl]");
             _i("xor a, e");
             _i("ld [hl+], a");
@@ -893,8 +887,8 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("xor a, d");
             _i("ld [hl-], a");
             break;
-        case OPERATOR_RSHIFTASSIGN:
-        case OPERATOR_LSHIFTASSIGN:
+        case OP_LSR_ASSIGN_16:
+        case OP_LSL_ASSIGN_16:
             {
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
@@ -906,7 +900,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
                 _i("and a");
                 _i("jr z, .l%d", end_label);
                 _i("dec a");
-                if (op == OPERATOR_LSHIFTASSIGN) {
+                if (op == OP_LSL_ASSIGN_16) {
                     _i("sla l");
                     _i("rl h");
                 } else {
@@ -923,7 +917,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
                 _i("dec hl");
             }
             break;
-        case OPERATOR_MULASSIGN:
+        case OP_MUL_ASSIGN_16:
             _i("push hl");
             emit_value_to_register(v1, false);
             _i("call __mulu16");
@@ -935,7 +929,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("ld [hl], d");
             _i("dec hl");
             break;
-        case OPERATOR_DIVASSIGN:
+        case OP_DIV_ASSIGN_16:
             _i("push hl");
             emit_value_to_register(v1, false);
             _i("call __divu16");
@@ -947,7 +941,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
             _i("ld [hl], d");
             _i("dec hl");
             break;
-        case OPERATOR_MODASSIGN:
+        case OP_MOD_ASSIGN_16:
             _i("push hl");
             emit_value_to_register(v1, false);
             _i("call __divu16");
@@ -966,11 +960,11 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeI
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     if (v1.storage != ST_REG_EA) {
         fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
@@ -987,7 +981,7 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op,
         _i("ld e, l");
     }
     v1 = emit_pop_temporary(v1, frame, false);
-    if (op == OPERATOR_PLUSASSIGN) {
+    if (op == OP_PTR_ADD_ASSIGN) {
         _i("ld a, [hl]");
         _i("add a, e");
         _i("ld [hl+], a");
@@ -995,7 +989,7 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op,
         _i("ld a, [hl]");
         _i("adc a, d");
         _i("ld [hl-], a");
-    } else if (op == OPERATOR_MINUSASSIGN) {
+    } else if (op == OP_PTR_SUB_ASSIGN) {
         _i("ld a, [hl]");
         _i("sub a, e");
         _i("ld [hl+], a");
@@ -1009,19 +1003,19 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op,
     return (Value) { .storage = ST_REG_EA, .typeId = v1.typeId };
 }
 
-Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeIdx expr1, NodeIdx expr2) {
+Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    Value v1 = emit_expression(n->expr.fe_operator.arg1, *frame);
-    emit_push_temporary(n->expr.fe_operator.arg1, v1, frame);
-    Value v2 = emit_expression(n->expr.fe_operator.arg2, *frame);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     v2 = emit_value_to_register(v2, true);   // v2 in `de`
     v1 = emit_pop_temporary(v1, frame, false);
     v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
-        case OPERATOR_SHIFT_RIGHT:
-        case OPERATOR_SHIFT_LEFT:
+        case OP_LSR_16:
+        case OP_LSL_16:
             {
                 const int start_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
@@ -1031,7 +1025,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
                 _i("and a");
                 _i("jr z, .l%d", end_label);
                 _i("dec a");
-                if (op == OPERATOR_SHIFT_LEFT) {
+                if (op == OP_LSL_16) {
                     _i("sla l");
                     _i("rl h");
                 } else {
@@ -1042,10 +1036,10 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
                 _label(end_label);
             }
             break;
-        case OPERATOR_ADD:
+        case OP_ADD_16:
             _i("add hl, de");
             break;
-        case OPERATOR_SUB:
+        case OP_SUB_16:
             _i("ld a, l");
             _i("sub a, e");
             _i("ld l, a");
@@ -1054,7 +1048,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
             _i("sbc a, d");
             _i("ld h, a");
             break;
-        case OPERATOR_BITOR:
+        case OP_OR_16:
             _i("ld a, h");
             _i("or a, d");
             _i("ld h, a");
@@ -1063,7 +1057,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
             _i("or a, e");
             _i("ld l, a");
             break;
-        case OPERATOR_BITAND:
+        case OP_AND_16:
             _i("ld a, h");
             _i("and a, d");
             _i("ld h, a");
@@ -1072,7 +1066,7 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
             _i("and a, e");
             _i("ld l, a");
             break;
-        case OPERATOR_BITXOR:
+        case OP_XOR_16:
             _i("ld a, h");
             _i("xor a, d");
             _i("ld h, a");
@@ -1081,19 +1075,19 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
             _i("xor a, e");
             _i("ld l, a");
             break;
-        case OPERATOR_MUL:
+        case OP_MUL_16:
             _i("call __mulu16");
             break;
-        case OPERATOR_DIV:
+        case OP_DIV_16:
             _i("call __divu16");
             break;
-        case OPERATOR_MODULO:
+        case OP_MOD_16:
             _i("call __divu16");
             _i("ld h, d");
             _i("ld l, e");
             break;
-        case OPERATOR_NEQ:
-        case OPERATOR_EQ:
+        case OP_NEQ_16:
+        case OP_EQ_16:
             {
                 const int l = _local_label_seq++;
                 _i("ld a, l");
@@ -1106,17 +1100,17 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
 
                 _i("ld a, 0"); // not affecting flags
 
-                _i("jr %s, .l%d", op == OPERATOR_EQ ? "nz" : "z", l);
+                _i("jr %s, .l%d", op == OP_EQ_16 ? "nz" : "z", l);
                 _i("dec a");
                 _label(l);
             }
             return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
-        case OPERATOR_GT:
-        case OPERATOR_LT:
+        case OP_GT_16:
+        case OP_LT_16:
             {
                 const int test_lo_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
-                const char *cflag = op == OPERATOR_GT ? "c" : "nc";
+                const char *cflag = op == OP_GT_16 ? "c" : "nc";
                 // test high byte
                 _i("ld a, h");
                 _i("cp a, d");
@@ -1136,12 +1130,12 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
                 _label(end_label);
             }
             return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
-        case OPERATOR_GTE:
-        case OPERATOR_LTE:
+        case OP_GTE_16:
+        case OP_LTE_16:
             {
                 const int test_lo_label = _local_label_seq++;
                 const int end_label = _local_label_seq++;
-                const char *cflag = op == OPERATOR_GTE ? "nc" : "c";
+                const char *cflag = op == OP_GTE_16 ? "nc" : "c";
                 // test high byte
                 _i("ld a, h");
                 _i("cp a, d");
@@ -1168,160 +1162,129 @@ Value emit_binop_u16(NodeIdx expr, StackFrame *frame, enum OperatorOp op, NodeId
     return (Value) { .typeId = U16, .storage = ST_REG_VAL };
 }
 
-static OperatorImpl operator_impls[] = {
-    { OPERATOR_UNARY_ADDRESSOF, -1 /* accept any */, TT_PRIM_VOID, emit_addressof },
-    { OPERATOR_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, emit_ptr_deref },
-    { OPERATOR_ASSIGN, TT_PTR, TT_PTR, emit_assign_u16 },
-    { OPERATOR_PLUSASSIGN, TT_PTR, TT_PRIM_U16, emit_ptr_opassign_u16 },
-    { OPERATOR_MINUSASSIGN, TT_PTR, TT_PRIM_U16, emit_ptr_opassign_u16 },
-    { OPERATOR_ADD, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
-    { OPERATOR_SUB, TT_PTR, TT_PRIM_U16, emit_ptr_addsub_u16 },
-
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_ADD, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_SUB, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_NEQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_EQ, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_GT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_LT, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_GTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_LTE, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_MUL, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_DIV, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_MODULO, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_BITXOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_BITAND, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_BITOR, TT_PRIM_U8, TT_PRIM_U8, emit_binop_u8 },
-    { OPERATOR_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_MULASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_MODASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_U8, TT_PRIM_U8, emit_assign_u8 },
-    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, emit_array_indexing_u8 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, emit_unary_math_u8 },
-
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_ADD, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_SUB, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_NEQ, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_EQ, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_GT, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_LT, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_GTE, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_LTE, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_MUL, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_DIV, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_MODULO, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_BITXOR, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_BITAND, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_BITOR, TT_PRIM_I8, TT_PRIM_I8, emit_binop_u8 },
-    { OPERATOR_ASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_MULASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_MODASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_I8, TT_PRIM_I8, emit_assign_u8 },
-    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_I8, emit_array_indexing_u8 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_I8, TT_PRIM_VOID, emit_unary_math_u8 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_I8, TT_PRIM_VOID, emit_unary_math_u8 },
-
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_ADD, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_SUB, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_NEQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_EQ, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_GT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_LT, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_GTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_LTE, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_MUL, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_DIV, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_MODULO, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_BITXOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_BITAND, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_BITOR, TT_PRIM_U16, TT_PRIM_U16, emit_binop_u16 },
-    { OPERATOR_ASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, emit_assign_u16 },
-    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, emit_array_indexing_u16 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, emit_unary_math_u16 },
-
-    { OPERATOR_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, emit_logical_and },
-    { OPERATOR_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, emit_logical_or },
-    { OPERATOR_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, emit_logical_not },
-
-    { OPERATOR_ASSIGN, TT_ARRAY, TT_ARRAY, emit_assign_array },
-    { -1 }
-};
-
-static Value emit_operator(NodeIdx call, StackFrame frame) {
+static Value emit_builtin(NodeIdx call, StackFrame frame) {
     AstNode *n = get_node(call);
-    assert(n->type == AST_EXPR && n->expr.type == EXPR_FE_OPERATOR);
-    enum OperatorOp op = n->expr.fe_operator.op;
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
+    enum BuiltinOp op = n->expr.builtin.op;
 
-    const int n_args = n->expr.fe_operator.arg2 == 0 ? 1 : 2;
+    Value result;
 
-    AstNode *arg1 = get_node(n->expr.fe_operator.arg1);
-
-    _i("; operator %s", operator_name(op));
-
-    enum TypeType ttarg1 = op == OPERATOR_UNARY_ADDRESSOF ? -1 : get_type(arg1->expr.eval_type)->type;
-    enum TypeType ttarg2 = n_args > 1 ?  get_type(get_node(n->expr.fe_operator.arg2)->expr.eval_type)->type : TT_PRIM_VOID;
-
-    // do we have an implementation of this op?
-    for (int i=0; operator_impls[i].op != -1; ++i) {
-        if (operator_impls[i].op == op &&
-            operator_impls[i].tt1 == ttarg1 &&
-            operator_impls[i].tt2 == ttarg2) {
-            Value result = operator_impls[i].emit(call, &frame, op,
-                    n->expr.fe_operator.arg1, n->expr.fe_operator.arg2);
-            if (!is_type_eq(result.typeId, n->expr.eval_type)) {
-                fatal_error(n->start_token, "Compiler bug. Operator operator yielded the wrong type. Expected %.*s but got %.*s",
-                        (int)get_type(n->expr.eval_type)->name.len,
-                        get_type(n->expr.eval_type)->name.s,
-                        (int)get_type(result.typeId)->name.len,
-                        get_type(result.typeId)->name.s);
-            }
-            return result;
-        }
+    switch (op) {
+        case OP_ADD_8:
+        case OP_SUB_8:
+        case OP_AND_8:
+        case OP_OR_8:
+        case OP_XOR_8:
+        case OP_MUL_8:
+        case OP_DIV_8:
+        case OP_MOD_8:
+        case OP_LSL_8:
+        case OP_LSR_8:
+        case OP_ASR_8:
+        case OP_EQ_8:
+        case OP_NEQ_8:
+        case OP_LT_8:
+        case OP_GT_8:
+        case OP_LTE_8:
+        case OP_GTE_8:
+            result = emit_binop_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ASR_16:
+        case OP_ADD_16:
+        case OP_SUB_16:
+        case OP_AND_16:
+        case OP_OR_16:
+        case OP_XOR_16:
+        case OP_MUL_16:
+        case OP_DIV_16:
+        case OP_MOD_16:
+        case OP_LSL_16:
+        case OP_LSR_16:
+        case OP_EQ_16:
+        case OP_NEQ_16:
+        case OP_LT_16:
+        case OP_GT_16:
+        case OP_LTE_16:
+        case OP_GTE_16:
+            result = emit_binop_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_NOT_8:
+        case OP_UNARY_NEG_8:
+            result = emit_unary_math_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_NOT_16:
+        case OP_UNARY_NEG_16:
+            result = emit_unary_math_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_LOGICAL_AND:
+            result = emit_logical_and(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_LOGICAL_OR:
+            result = emit_logical_or(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_LOGICAL_NOT:
+            result = emit_logical_not(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ASSIGN_8:
+        case OP_ADD_ASSIGN_8:
+        case OP_SUB_ASSIGN_8:
+        case OP_MUL_ASSIGN_8:
+        case OP_DIV_ASSIGN_8:
+        case OP_MOD_ASSIGN_8:
+        case OP_LSL_ASSIGN_8:
+        case OP_LSR_ASSIGN_8:
+        case OP_ASR_ASSIGN_8:
+        case OP_AND_ASSIGN_8:
+        case OP_OR_ASSIGN_8:
+        case OP_XOR_ASSIGN_8:
+            result = emit_assign_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ASSIGN_16:
+        case OP_ADD_ASSIGN_16:
+        case OP_SUB_ASSIGN_16:
+        case OP_MUL_ASSIGN_16:
+        case OP_DIV_ASSIGN_16:
+        case OP_MOD_ASSIGN_16:
+        case OP_LSL_ASSIGN_16:
+        case OP_LSR_ASSIGN_16:
+        case OP_ASR_ASSIGN_16:
+        case OP_AND_ASSIGN_16:
+        case OP_OR_ASSIGN_16:
+        case OP_XOR_ASSIGN_16:
+            result = emit_assign_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ASSIGN_SIZED: /* structs, arrays, etc */
+            result = emit_assign_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ARRAY_INDEX_8:
+            result = emit_array_indexing_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ARRAY_INDEX_16:
+            result = emit_array_indexing_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_ADDRESSOF:
+            result = emit_addressof(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_DEREF:
+            result = emit_ptr_deref(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_PTR_ADD:
+        case OP_PTR_SUB:
+            result = emit_ptr_addsub_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_PTR_ADD_ASSIGN:
+        case OP_PTR_SUB_ASSIGN:
+            result = emit_ptr_opassign_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
     }
-    if (n_args == 1) {
-        Str typename_ = get_type(arg1->expr.eval_type)->name;
-        fatal_error(n->start_token, "LR35902 backend does not support operator '%s' with %.*s argument",
-                operator_name(op),
-                (int)typename_.len, typename_.s);
-    } else {
-        Str typename1 = get_type(arg1->expr.eval_type)->name;
-        Str typename2 = get_type(get_node(n->expr.fe_operator.arg2)->expr.eval_type)->name;
-        fatal_error(n->start_token, "LR35902 backend does not support operator '%s' with %.*s and %.*s arguments",
-                operator_name(op),
-                (int)typename1.len, typename1.s,
-                (int)typename2.len, typename2.s);
+    if (!is_type_eq(result.typeId, n->expr.eval_type)) {
+        fatal_error(n->start_token, "Compiler bug. Operator operator yielded the wrong type. Expected %.*s but got %.*s",
+                (int)get_type(n->expr.eval_type)->name.len,
+                get_type(n->expr.eval_type)->name.s,
+                (int)get_type(result.typeId)->name.len,
+                get_type(result.typeId)->name.s);
     }
+    return result;
 }
 
 static Value emit_cast(NodeIdx cast, StackFrame frame) {
@@ -1561,7 +1524,10 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             // XXX should be never type
             return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         case EXPR_FE_OPERATOR:
-            return emit_operator(expr, frame);
+            // should not reach backend
+            assert(false);
+        case EXPR_BUILTIN:
+            return emit_builtin(expr, frame);
         case EXPR_ASM:
             fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);
             return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
@@ -1687,9 +1653,12 @@ static int get_max_local_vars_size(NodeIdx n)
             }
             break;
         case EXPR_FE_OPERATOR:
-            size = max(size, get_max_local_vars_size(node->expr.fe_operator.arg1));
-            if (node->expr.fe_operator.arg2 != 0) {
-                size = max(size, get_max_local_vars_size(node->expr.fe_operator.arg2));
+            // frontend structure (_FE_) should not reach backend
+            assert(false);
+        case EXPR_BUILTIN:
+            size = max(size, get_max_local_vars_size(node->expr.builtin.arg1));
+            if (node->expr.builtin.arg2 != 0) {
+                size = max(size, get_max_local_vars_size(node->expr.builtin.arg2));
             }
             break;
         case EXPR_CAST:

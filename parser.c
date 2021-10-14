@@ -1535,6 +1535,15 @@ void print_ast(NodeIdx nidx, int depth) {
                         print_ast(arg, depth+2);
                     }
                     break;
+                case EXPR_BUILTIN:
+                    printf("builtin (%d)\n", node->expr.builtin.op);
+                    _indent(depth+2);
+                    printf("args\n");
+                    print_ast(node->expr.builtin.arg1, depth+2);
+                    if (node->expr.builtin.arg2) {
+                        print_ast(node->expr.builtin.arg2, depth+2);
+                    }
+                    break;
                 case EXPR_FE_OPERATOR:
                     printf("expr_operator (%s)\n", operator_name(node->expr.fe_operator.op));
                     _indent(depth+2);

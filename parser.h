@@ -4,6 +4,7 @@
 #include "vec.h"
 #include "str.h"
 #include "types.h"
+#include "builtin.h"
 
 typedef int NodeIdx;
 typedef struct Token Token;
@@ -54,6 +55,7 @@ typedef struct AstNode {
                 EXPR_LOOP,
                 EXPR_GOTO,
                 EXPR_RETURN,
+                EXPR_BUILTIN,
                 // temporary frontend state. not passed to middle/backend
                 EXPR_FE_OPERATOR,
             } type;
@@ -114,6 +116,12 @@ typedef struct AstNode {
                     NodeIdx callee;
                     NodeIdx first_arg;
                 } call;
+
+                struct {
+                    NodeIdx arg1;
+                    NodeIdx arg2;
+                    enum BuiltinOp op;
+                } builtin;
 
                 struct {
                     NodeIdx arg1;

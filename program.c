@@ -63,117 +63,91 @@ static JumpLabel *label_lookup(Scope *scope, Str *name) {
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint);
 
 typedef struct ValidOperator {
-    enum OperatorOp op;
+    enum OperatorOp operator;
+    enum BuiltinOp op;
     enum TypeType arg1;
     enum TypeType arg2;
     TypeId ret;
 } ValidOperator;
 
 static const ValidOperator valid_operators[] = {
-    { OPERATOR_UNARY_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
-    { OPERATOR_UNARY_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
-    { OPERATOR_ASSIGN, -1, -1, -1 },
-    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
-    { OPERATOR_ARRAY_INDEXING, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
-    { OPERATOR_ADD, TT_PTR, TT_PRIM_U16, -1 },
-    { OPERATOR_SUB, TT_PTR, TT_PRIM_U16, -1 },
-    { OPERATOR_PLUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
-    { OPERATOR_MINUSASSIGN, TT_PTR, TT_PRIM_U16, -1 },
-
-    { OPERATOR_UNARY_NEG, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_ADD, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_SUB, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_NEQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_EQ, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_GT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_LT, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_GTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_LTE, TT_PRIM_U8, TT_PRIM_U8, BOOL },
-    { OPERATOR_MUL, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_DIV, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_MODULO, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITXOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITAND, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITOR, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_MULASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_MODASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_ASSIGN, TT_PRIM_U8, TT_PRIM_U8, U8 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_U8, TT_PRIM_VOID, U8 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_U8, TT_PRIM_VOID, U8 },
-
-    { OPERATOR_UNARY_NEG, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_ADD, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_SUB, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_NEQ, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_EQ, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_GT, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_LT, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_GTE, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_LTE, TT_PRIM_I8, TT_PRIM_I8, BOOL },
-    { OPERATOR_MUL, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_DIV, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_MODULO, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITXOR, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITAND, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITOR, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_MULASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_MODASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_ASSIGN, TT_PRIM_I8, TT_PRIM_I8, I8 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_I8, TT_PRIM_VOID, I8 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_I8, TT_PRIM_VOID, I8 },
-
-    { OPERATOR_SHIFT_LEFT, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_SHIFT_RIGHT, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_ADD, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_SUB, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_NEQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_EQ, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_GT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_LT, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_GTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_LTE, TT_PRIM_U16, TT_PRIM_U16, BOOL },
-    { OPERATOR_MUL, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_DIV, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_MODULO, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITXOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITAND, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITOR, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_PLUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_MINUSASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_MULASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_DIVASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_MODASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_LSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_RSHIFTASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITANDASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_BITXORASSIGN, TT_PRIM_U16, TT_PRIM_U16, U16 },
-    { OPERATOR_UNARY_NEG, TT_PRIM_U16, TT_PRIM_VOID, U16 },
-    { OPERATOR_UNARY_BITNOT, TT_PRIM_U16, TT_PRIM_VOID, U16 },
-    
-    { OPERATOR_UNARY_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, BOOL },
-    { OPERATOR_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
-    { OPERATOR_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    // pointer stuff
+    { OPERATOR_UNARY_ADDRESSOF, OP_ADDRESSOF, -1 /* any */, TT_PRIM_VOID, -1 },
+    { OPERATOR_UNARY_DEREF, OP_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
+    { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PTR, TT_PTR, -1 },
+    { OPERATOR_ASSIGN, OP_ASSIGN_SIZED, TT_ARRAY, TT_ARRAY, -1 },
+    { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_8, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
+    { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_16, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
+    { OPERATOR_ADD, OP_PTR_ADD, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_SUB, OP_PTR_SUB, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_PLUSASSIGN, OP_PTR_ADD_ASSIGN, TT_PTR, TT_PRIM_U16, -1 },
+    { OPERATOR_MINUSASSIGN, OP_PTR_SUB_ASSIGN, TT_PTR, TT_PRIM_U16, -1 },
+    // logical
+    { OPERATOR_UNARY_LOGICAL_NOT, OP_LOGICAL_NOT, TT_PRIM_BOOL, TT_PRIM_VOID, BOOL },
+    { OPERATOR_LOGICAL_AND, OP_LOGICAL_AND, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    { OPERATOR_LOGICAL_OR, OP_LOGICAL_OR, TT_PRIM_BOOL, TT_PRIM_BOOL, BOOL },
+    // u8
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SHIFT_LEFT, OP_LSL_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SHIFT_RIGHT, OP_LSR_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_ADD, OP_ADD_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_SUB, OP_SUB_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_NEQ, OP_NEQ_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_EQ, OP_EQ_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_GT, OP_GT_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_LT, OP_LT_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_GTE, OP_GTE_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_LTE, OP_LTE_8, TT_PRIM_U8, TT_PRIM_U8, BOOL },
+    { OPERATOR_MUL, OP_MUL_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_DIV, OP_DIV_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MODULO, OP_MOD_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITXOR, OP_XOR_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITAND, OP_AND_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITOR, OP_OR_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_PLUSASSIGN, OP_ADD_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MINUSASSIGN, OP_SUB_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MULASSIGN, OP_MUL_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_DIVASSIGN, OP_DIV_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_MODASSIGN, OP_MOD_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_LSHIFTASSIGN, OP_LSL_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_RSHIFTASSIGN, OP_LSR_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITANDASSIGN, OP_AND_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITORASSIGN, OP_OR_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_BITXORASSIGN, OP_XOR_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_ASSIGN, OP_ASSIGN_8, TT_PRIM_U8, TT_PRIM_U8, U8 },
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_8, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    { OPERATOR_UNARY_BITNOT, OP_NOT_8, TT_PRIM_U8, TT_PRIM_VOID, U8 },
+    // u16
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_SHIFT_LEFT, OP_LSL_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_SHIFT_RIGHT, OP_LSR_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_ADD, OP_ADD_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_SUB, OP_SUB_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_NEQ, OP_NEQ_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_EQ, OP_EQ_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_GT, OP_GT_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_LT, OP_LT_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_GTE, OP_GTE_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_LTE, OP_LTE_16, TT_PRIM_U16, TT_PRIM_U16, BOOL },
+    { OPERATOR_MUL, OP_MUL_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_DIV, OP_DIV_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MODULO, OP_MOD_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITXOR, OP_XOR_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITAND, OP_AND_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITOR, OP_OR_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_PLUSASSIGN, OP_ADD_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MINUSASSIGN, OP_SUB_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MULASSIGN, OP_MUL_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_DIVASSIGN, OP_DIV_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_MODASSIGN, OP_MOD_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_LSHIFTASSIGN, OP_LSL_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_RSHIFTASSIGN, OP_LSR_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITANDASSIGN, OP_AND_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITORASSIGN, OP_OR_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_BITXORASSIGN, OP_XOR_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_16, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    { OPERATOR_UNARY_BITNOT, OP_NOT_16, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { -1 }
 };
 
@@ -203,9 +177,9 @@ static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId
 
 /* Pass -1 for TypeType to find any */
 static const struct ValidOperator *find_first_matching_operator(enum OperatorOp op, enum TypeType t1, enum TypeType t2) {
-    for (int i=0; valid_operators[i].op != -1; ++i) {
+    for (int i=0; valid_operators[i].operator != -1; ++i) {
         const struct ValidOperator *v = &valid_operators[i];
-        if (v->op == op && (v->arg1 == t1 || t1 == -1) && (v->arg2 == t2 || t2 == -1)) {
+        if (v->operator == op && (v->arg1 == t1 || t1 == -1) && (v->arg2 == t2 || t2 == -1)) {
             return v;
         }
     }
@@ -222,14 +196,15 @@ static TypeId int_typekind_to_typeid(enum TypeType typekind) {
     }
 }
 
+/* Transforms the untyped operator into a specific builtin op */
 static TypeId typecheck_operator(Program *prog, Scope *scope, NodeIdx expr, TypeId expr_type_hint) {
     AstNode *n = get_node(expr);
     enum OperatorOp op = n->expr.fe_operator.op;
 
     const int num_args = n->expr.fe_operator.arg2 == 0 ? 1 : 2;
 
-    NodeIdx arg1 = n->expr.fe_operator.arg1;
-    NodeIdx arg2 = n->expr.fe_operator.arg2;
+    const NodeIdx arg1 = n->expr.fe_operator.arg1;
+    const NodeIdx arg2 = n->expr.fe_operator.arg2;
 
     /* Mandatory optimization... fold unary negative operator on constants -- needed for globals */
     if (op == OPERATOR_UNARY_NEG) {
@@ -270,11 +245,17 @@ static TypeId typecheck_operator(Program *prog, Scope *scope, NodeIdx expr, Type
     tt2 = t2 ? get_type(t2)->type : TT_PRIM_VOID;
 
     // do the argument types match a valid operator?
-    for (int i=0; valid_operators[i].op != -1; ++i) {
+    for (int i=0; valid_operators[i].operator != -1; ++i) {
         const ValidOperator *v = &valid_operators[i];
-        if (v->op == op &&
+        if (v->operator == op &&
             (v->arg1 == -1 || v->arg1 == tt1) &&
             (v->arg2 == -1 || v->arg2 == tt2)) {
+            // convert fe_operator node to builtin node, that backend understands
+            n->expr.type = EXPR_BUILTIN;
+            n->expr.builtin.arg1 = arg1;
+            n->expr.builtin.arg2 = arg2;
+            n->expr.builtin.op = v->op;
+
             if (v->ret == -1) {
                 // special handling of return type
                 switch (op) {
@@ -640,6 +621,12 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                 validate_return(n->start_token, scope->return_type, ret);
                 t = NEVER;
             }
+            break;
+        case EXPR_BUILTIN:
+            // EXPR_OPERATOR nodes should be converted to
+            // EXPR_BUILTIN by THIS function, so do not expect
+            // to walk over them...
+            t = n->expr.eval_type;
             break;
     }
     n->expr.eval_type = t;
