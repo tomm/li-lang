@@ -1,6 +1,6 @@
 asm("
 ; 248 cycles
-__mulu8:
+__mul8:
     ; a = a*b
         ld c, a
         xor a, a
@@ -14,7 +14,7 @@ __mulu8:
         ret
 
 ; 700 cycles
-__mulu16:
+__mul16:
     ; hl = hl*de
         ld b, h
         ld c, l

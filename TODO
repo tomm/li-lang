@@ -1,3 +1,5 @@
+* i8 & i16 divide
+* i16 type
 * many compile errors still need to be moved from backend to frontend
 * function pointers
 * structs
