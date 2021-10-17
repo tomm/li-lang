@@ -479,6 +479,21 @@ Value emit_assign_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
             _i("ld a, b");
             _i("ld [hl], a");
             break;
+        case OP_DIV_ASSIGN_I8:
+            _i("ld a, [hl]");
+            _i("push hl");
+            _i("call __divi8");
+            _i("pop hl");
+            _i("ld [hl], a");
+            break;
+        case OP_MOD_ASSIGN_I8:
+            _i("ld a, [hl]");
+            _i("push hl");
+            _i("call __divi8");
+            _i("pop hl");
+            _i("ld a, b");
+            _i("ld [hl], a");
+            break;
         case OP_LSL_ASSIGN_8:
         case OP_LSR_ASSIGN_8:
         case OP_ASR_ASSIGN_8:
@@ -746,6 +761,13 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
             break;
         case OP_MOD_U8:
             _i("call __divu8");
+            _i("ld a, b");
+            break;
+        case OP_DIV_I8:
+            _i("call __divi8");
+            break;
+        case OP_MOD_I8:
+            _i("call __divi8");
             _i("ld a, b");
             break;
         case OP_NEQ_8:
@@ -1223,9 +1245,6 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
     switch (op) {
         case OP_DIV_I8:
         case OP_MOD_I8:
-        case OP_DIV_ASSIGN_I8:
-        case OP_MOD_ASSIGN_I8:
-            assert(false);
         case OP_ADD_8:
         case OP_SUB_8:
         case OP_AND_8:
@@ -1295,6 +1314,8 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_MUL_ASSIGN_8:
         case OP_DIV_ASSIGN_U8:
         case OP_MOD_ASSIGN_U8:
+        case OP_DIV_ASSIGN_I8:
+        case OP_MOD_ASSIGN_I8:
         case OP_LSL_ASSIGN_8:
         case OP_LSR_ASSIGN_8:
         case OP_ASR_ASSIGN_8:

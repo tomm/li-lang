@@ -32,6 +32,52 @@ __mul16:
     ENDR
         ret
 
+__divi8:
+    ; [remainder:quotient] b:a = a / b
+        ld c, a
+        ld d, a ; bit7: remainder -ve, bit0: result -ve
+        res 0, d
+        xor a, b
+        bit 7, a
+        jr z, .result_pve
+        set 0, d
+    .result_pve:
+        ; abs of divisor and dividend
+        bit 7, b
+        jr z, .divisor_pve
+        ld a, b
+        cpl
+        inc a
+        ld b, a
+    .divisor_pve:
+        bit 7, c
+        jr z, .dividend_pve
+        ld a, c
+        cpl
+        inc a
+        ld c, a
+    .dividend_pve:
+        ld a, c
+        push de
+        call __divu8
+        pop de
+        ; remainder should be negative?
+        bit 7, d
+        jr z, .remainder_pve
+        ld c, a
+        ld a, b
+        cpl
+        inc a
+        ld b, a
+        ld a, c
+    .remainder_pve:
+        ; quotient should be negative?
+        bit 0, d
+        ret z
+        cpl
+        inc a
+        ret
+
 __divu8:
     ; [remainder:quotient] b:a = a / b
         ld c, b
