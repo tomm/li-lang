@@ -193,6 +193,7 @@ static StackVarIdx alloc_stack_var(const Token *t, StackFrame frame, StackVar v)
     }
 }
 
+/*
 static int get_fn_return_type_stack_size(TypeId ret) {
     const Type *t = get_type(ret);
     switch (t->type) {
@@ -222,6 +223,7 @@ static int get_call_return_type_stack_size(const AstNode *call) {
         assert(false);
     }
 }
+*/
 
 static void unalloc_stack_var() {
     StackVar v;
@@ -329,7 +331,6 @@ static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
 }
 
 static void emit_push_temporary(NodeIdx nidx, Value v, StackFrame *frame) {
-    AstNode *n = get_node(nidx);
     assert(v.typeId != VOID);
     switch (v.storage) {
         case ST_REG_VAL:
@@ -648,8 +649,6 @@ Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
 
 Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg1 = get_node(n->expr.builtin.arg1);
-    AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
@@ -670,8 +669,6 @@ Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
 
 Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
-    AstNode *arg1 = get_node(n->expr.builtin.arg1);
-    AstNode *arg2 = get_node(n->expr.builtin.arg2);
 
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
@@ -859,6 +856,8 @@ Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Node
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
+    assert(get_type(v2.typeId)->type == TT_ARRAY);
+
     // v2 (src) in `de`
     _i("ld d, h");
     _i("ld e, l");

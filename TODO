@@ -1,4 +1,5 @@
 * i8 & i16 divide
+* casts between i8,i16 and other types
 * i16 type
 * many compile errors still need to be moved from backend to frontend
 * function pointers
