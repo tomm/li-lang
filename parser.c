@@ -793,16 +793,12 @@ static NodeIdx parse_conditional_expression(TokenCursor *toks) {
         const Token *t = chomp(toks, T_IF);
 
         NodeIdx condition = parse_expression(toks);
-        chomp(toks, T_LBRACE);
-        NodeIdx on_true = parse_list_expression(toks, T_RBRACE);
-        chomp(toks, T_RBRACE);
+        NodeIdx on_true = parse_expression(toks);
         NodeIdx on_false = 0;
 
         if (tok_peek(toks, 0)->type == T_ELSE) {
             chomp(toks, T_ELSE);
-            chomp(toks, T_LBRACE);
-            on_false = parse_list_expression(toks, T_RBRACE);
-            chomp(toks, T_RBRACE);
+            on_false = parse_expression(toks);
         }
 
         NodeIdx if_else = alloc_node();
