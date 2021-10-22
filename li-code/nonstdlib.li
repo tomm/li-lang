@@ -10,7 +10,7 @@ fn memcpy(dest: @u8, src: @u8, len: u16) {
 
 fn memset(dest: @u8, val: u8, n: u16) {
     while n > 0 {
-        dest# = 0
+        dest# = val
         dest += 1
         n -= 1
     }
