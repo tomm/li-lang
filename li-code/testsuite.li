@@ -8,9 +8,6 @@ fn test_u8_arith(a: u8, b: u8) -> u8 {
 fn test_u16_arith(a: u16, b: u16, c: u16, d: u8) -> u16 {
   a + b + c - 0x10f0 & 0x33cc | 0xf00f ^ d as u16
 }
-fn test_cast_u16(a: u8) -> u16 { a as u16 }
-
-fn test_cast_u8(a: u16) -> u8 { a as u8 }
 
 fn test_var_globals() -> void {
     test_u16 = 10
@@ -94,14 +91,16 @@ fn main() {
     // larger u16 arith expression requiring temporaries
     expect(test_u16_arith(0x6543, 0x4567, 0x1234, 0x20) == 0xf3ef)
     // casts
-    expect(test_cast_u16(0xde) == 0xdeu16)
-    expect(test_cast_u8(0xcafe) == 0xfe)
+    expect(255u8 as i8 == -1i8)
+    expect({var x=255u8 3u8 x as i8 == -1i8})
+    expect(0xdeu8 as u16 == 0xdeu16)
+    expect({var x=0xdeu8 x as u16 == 0xdeu16})
     // local scopes
     expect(test_local_scope(66) == 6)
     // forward/extern declarations
     expect(test_fwd_decl(2) == 3)
     // if expression
-    expect({if 1==1 {0xcafeu16} else {0xdeadu16}} == 0xcafe)
+    expect({if 1==1 0xcafeu16 else 0xdeadu16} == 0xcafe)
     expect({if 0==1 {0xcafeu16} else {0xdeadu16}} == 0xdead)
     // == operator
     expect(eq_u8(4,4))
@@ -428,11 +427,7 @@ fn test_for_loop() {
 fn test_return(v: u8) -> u8 {
     // allocate needless local, to check `return` deallocs stack frame correctly
     var i = 0u8
-    if v == 0 {
-        return 'f'
-    } else {
-        return 't'
-    }
+    if v == 0 return 'f' else return 't'
 }
 
 // can tell type, or infer from literal

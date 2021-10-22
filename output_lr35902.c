@@ -1379,32 +1379,37 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     TypeId to_type = n->expr.cast.to_type;
     Value v1 = emit_expression(n->expr.cast.arg, frame);
 
-    if (v1.typeId == to_type) {
-        // no-op
-        return v1;
+    if ((v1.typeId == to_type) ||
+        (v1.typeId == U8 && to_type == I8) ||
+        (v1.typeId == I8 && to_type == U8) ||
+        (get_type(to_type)->type == TT_PTR && get_type(v1.typeId)->type == TT_PTR) ||
+        (v1.typeId == U16 && get_type(to_type)->type == TT_PTR) ||
+        (to_type == U16 && get_type(v1.typeId)->type == TT_PTR)) {
+        // no-op casts
+        return (Value) { .typeId = to_type, .storage = v1.storage };
+
     } else if (v1.typeId == U8 && to_type == U16) {
         v1 = emit_value_to_register(v1, false);  // v1 in `a`
         _i("ld h, 0");
         _i("ld l, a");
+        return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+
     } else if (v1.typeId == U16 && to_type == U8) {
         v1 = emit_value_to_register(v1, false);  // v1 in `hl`
         _i("ld a, l");
-    } else if (get_type(to_type)->type == TT_PTR && get_type(v1.typeId)->type == TT_PTR) {
-        // fine. nothing to do
-    } else if (v1.typeId == U16 && get_type(to_type)->type == TT_PTR) {
-        // fine. nothing to do
-    } else if (to_type == U16 && get_type(v1.typeId)->type == TT_PTR) {
-        // fine. nothing to do
+        return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+
     } else if (get_type(v1.typeId)->type == TT_ARRAY &&
                get_type(to_type)->type == TT_PTR &&
                is_type_eq(get_type(v1.typeId)->array.contained,
                           get_type(to_type)->ptr.ref)) {
-        // fine. nothing to do
+        // consider EA of array to be REG_VAL of ptr
+        assert(v1.storage == ST_REG_EA);
+        return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+
     } else {
         assert(false);
     }
-
-    return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
 }
 
 static void emit_call_push_args(int arg_num, NodeIdx arg_list_head, StackFrame *frame) {
@@ -1503,12 +1508,14 @@ static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     _i("jp z, .l%d", else_label);
 
     Value on_true = emit_expression(n->expr.if_else.on_true, frame);
+    on_true = emit_value_to_register(on_true, false);
 
     if (n->expr.if_else.on_false != 0) {
         _i("jp .l%d", end_label);
         _label(else_label);
 
         Value on_false = emit_expression(n->expr.if_else.on_false, frame);
+        on_false = emit_value_to_register(on_false, false);
 
         if (!is_type_eq(on_false.typeId, on_true.typeId)) {
             fatal_error(n->start_token, "if-else expects both branches to evaluate to the same type. found %.*s and %.*s",
