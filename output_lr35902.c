@@ -1087,6 +1087,7 @@ Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     v1 = emit_value_to_register(v1, false);  // v1 in `hl`
 
     switch (op) {
+        case OP_ASR_16:
         case OP_LSR_16:
         case OP_LSL_16:
             {
@@ -1101,10 +1102,13 @@ Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
                 if (op == OP_LSL_16) {
                     _i("sla l");
                     _i("rl h");
-                } else {
+                } else if (op == OP_LSR_16) {
                     _i("srl h");
                     _i("rr l");
-                }
+                } else if (op == OP_ASR_16) {
+                    _i("sra h");
+                    _i("rr l");
+                } else assert(false);
                 _i("jr .l%d", start_label);
                 _label(end_label);
             }
@@ -1176,6 +1180,44 @@ Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
                 _i("jr %s, .l%d", op == OP_EQ_16 ? "nz" : "z", l);
                 _i("dec a");
                 _label(l);
+            }
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
+        case OP_LTE_I16:
+        case OP_GT_I16:
+            {
+                const int end_label = _local_label_seq++;
+                const char *nflag = op == OP_GT_I16 ? "z" : "nz";
+                _i("ld a, e");
+                _i("sub a, l");
+                _i("ld e, a");
+                _i("ld a, d");
+                _i("sbc a, h");
+                _i("ld d, a");
+
+                _i("bit 7, d");
+                _i("ld a, 0");
+                _i("jr %s, .l%d", nflag, end_label);
+                _i("inc a");
+                _label(end_label);
+            }
+            return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
+        case OP_GTE_I16:
+        case OP_LT_I16:
+            {
+                const int end_label = _local_label_seq++;
+                const char *nflag = op == OP_LT_I16 ? "z" : "nz";
+                _i("ld a, l");
+                _i("sub a, e");
+                _i("ld l, a");
+                _i("ld a, h");
+                _i("sbc a, d");
+                _i("ld h, a");
+
+                _i("bit 7, h");
+                _i("ld a, 0");
+                _i("jr %s, .l%d", nflag, end_label);
+                _i("inc a");
+                _label(end_label);
             }
             return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
         case OP_GT_U16:

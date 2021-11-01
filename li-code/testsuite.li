@@ -116,6 +116,9 @@ fn main() {
     expect(eq_u16(0x1234, 0x1234))
     expect(!eq_u16(0x1234, 0x2345))
     expect(!eq_u16(0x1284, 0x2345))
+
+    expect(eq_i16(-1234, -1234))
+    expect(!eq_i16(-923, 348))
     // != operator
     expect(!neq_u8(4,4))
     expect(neq_u8(5,6))
@@ -128,6 +131,9 @@ fn main() {
     expect(!neq_u16(0x1234, 0x1234))
     expect(neq_u16(0x1234, 0x2345))
     expect(neq_u16(0x1284, 0x2345))
+
+    expect(!neq_i16(0x1234, 0x1234))
+    expect(neq_i16(-1234, -2934));
     // > operator
     expect(gt_u8(5,4))
     expect(!gt_u8(2,6))
@@ -142,6 +148,14 @@ fn main() {
     expect(!gt_u16(0x1234,0x1235))
     expect(gt_u16(0x1333,0x1233))
     expect(!gt_u16(0x1133,0x1233))
+
+    expect(gt_i16(0x1234,0x1233))
+    expect(gt_i16(0x1334,0x1234))
+    expect(!gt_i16(0x1234,0x1234))
+    expect(gt_i16(0x1234,0xffff))
+    expect(gt_i16(0x1234,-1))
+    expect(!gt_i16(0x1234,0x1334))
+    expect(!gt_i16(0x1233,0x1234))
     // < operator
     expect(lt_u8(4,5))
     expect(!lt_u8(6,2))
@@ -156,6 +170,14 @@ fn main() {
     expect(!lt_u16(0x1235,0x1234))
     expect(lt_u16(0x1233,0x1333))
     expect(!lt_u16(0x1233,0x1133))
+
+    expect(!lt_i16(0x1234,0x1233))
+    expect(!lt_i16(0x1334,0x1234))
+    expect(!lt_i16(0x1234,0x1234))
+    expect(!lt_i16(0x1234,0xffff))
+    expect(!lt_i16(0x1234,-1))
+    expect(lt_i16(0x1234,0x1334))
+    expect(lt_i16(0x1233,0x1234))
     // >= operator
     expect(gte_u8(5,4))
     expect(!gte_u8(2,6))
@@ -170,6 +192,14 @@ fn main() {
     expect(!gte_u16(0x1234,0x1235))
     expect(gte_u16(0x1333,0x1233))
     expect(!gte_u16(0x1133,0x1233))
+
+    expect(gte_i16(0x1234,0x1233))
+    expect(gte_i16(0x1334,0x1234))
+    expect(gte_i16(0x1234,0x1234))
+    expect(gte_i16(0x1234,0xffff))
+    expect(gte_i16(0x1234,-1))
+    expect(!gte_i16(0x1234,0x1334))
+    expect(!gte_i16(0x1233,0x1234))
     // <= operator
     expect(lte_u8(4,5))
     expect(!lte_u8(6,2))
@@ -184,6 +214,14 @@ fn main() {
     expect(!lte_u16(0x1235,0x1234))
     expect(lte_u16(0x1233,0x1333))
     expect(!lte_u16(0x1233,0x1133))
+
+    expect(!lte_i16(0x1234,0x1233))
+    expect(!lte_i16(0x1334,0x1234))
+    expect(lte_i16(0x1234,0x1234))
+    expect(!lte_i16(0x1234,0xffff))
+    expect(!lte_i16(0x1234,-1))
+    expect(lte_i16(0x1234,0x1334))
+    expect(lte_i16(0x1233,0x1234))
     // logical ops
     expect(log_and(true,true))
     expect(!log_and(false,true))
@@ -270,6 +308,10 @@ fn main() {
     expect(shl_u16(6789, 3) == 54312)
     expect(shr_u16(6789, 0) == 6789)
     expect(shr_u16(6789, 3) == 848)
+    expect(shl_i16(-1000, 2) == -4000)
+    expect(shl_i16(2000, 2) == 8000)
+    expect(shr_i16(5000, 1) == 2500)
+    expect(shr_i16(-4000, 2) == -1000)
 
     // test u8 op-assigns
     {
@@ -377,21 +419,27 @@ fn bitxor_u16(a: u16, b: u16) -> u16 { a ^ b }
 fn eq_u8(a: u8, b: u8) -> bool { a == b }
 fn eq_i8(a: i8, b: i8) -> bool { a == b }
 fn eq_u16(a: u16, b: u16) -> bool { a == b }
+fn eq_i16(a: i16, b: i16) -> bool { a == b }
 fn neq_u8(a: u8, b: u8) -> bool { a != b }
 fn neq_i8(a: i8, b: i8) -> bool { a != b }
 fn neq_u16(a: u16, b: u16) -> bool { a != b }
+fn neq_i16(a: i16, b: i16) -> bool { a != b }
 fn gt_u8(a: u8, b: u8) -> bool { a > b }
 fn gt_i8(a: i8, b: i8) -> bool { a > b }
 fn gt_u16(a: u16, b: u16) -> bool { a > b }
+fn gt_i16(a: i16, b: i16) -> bool { a > b }
 fn gte_u8(a: u8, b: u8) -> bool { a >= b }
 fn gte_i8(a: i8, b: i8) -> bool { a >= b }
 fn gte_u16(a: u16, b: u16) -> bool { a >= b }
+fn gte_i16(a: i16, b: i16) -> bool { a >= b }
 fn lt_u8(a: u8, b: u8) -> bool { a < b }
 fn lt_i8(a: i8, b: i8) -> bool { a < b }
 fn lt_u16(a: u16, b: u16) -> bool { a < b }
+fn lt_i16(a: i16, b: i16) -> bool { a < b }
 fn lte_u8(a: u8, b: u8) -> bool { a <= b }
 fn lte_i8(a: i8, b: i8) -> bool { a <= b }
 fn lte_u16(a: u16, b: u16) -> bool { a <= b }
+fn lte_i16(a: i16, b: i16) -> bool { a <= b }
 fn add_u8(a: u8, b: u8) -> u8 { a + b }
 fn add_i8(a: i8, b: i8) -> i8 { a + b }
 fn add_u16(a: u16, b: u16) -> u16 { a + b }
@@ -413,6 +461,8 @@ fn shl_i8(a: i8, b: i8) -> i8 { a << b }
 fn shr_i8(a: i8, b: i8) -> i8 { a >> b }
 fn shl_u16(a: u16, b: u16) -> u16 { a << b }
 fn shr_u16(a: u16, b: u16) -> u16 { a >> b }
+fn shl_i16(a: i16, b: i16) -> i16 { a << b }
+fn shr_i16(a: i16, b: i16) -> i16 { a >> b }
 
 fn test_for_loop() {
     /*
