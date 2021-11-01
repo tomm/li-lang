@@ -1,4 +1,4 @@
-* i8 & i16 divide
+* i16 divide
 * casts between i8,i16 and other types
 * i16 type
 * many compile errors still need to be moved from backend to frontend
@@ -8,8 +8,9 @@
 * unused number literal causes backend crash. ie `1;`
 * do while loop
 * switch
-* real returning arrays by value
-* bool type
+* working return-in-memory codegen.
+  idea: desugar these function calls to a fn-top-scoped var myTmp: [u8; 123]
+  and a myFn(myTmp@, arg0, arg1, etc)
 * int + &T
 * &T - &T
 * enforce constness

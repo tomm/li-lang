@@ -179,6 +179,37 @@ static const ValidOperator valid_operators[] = {
     { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PRIM_U16, TT_PRIM_U16, U16 },
     { OPERATOR_UNARY_NEG, OP_UNARY_NEG_16, TT_PRIM_U16, TT_PRIM_VOID, U16 },
     { OPERATOR_UNARY_BITNOT, OP_NOT_16, TT_PRIM_U16, TT_PRIM_VOID, U16 },
+    // i16
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_SHIFT_LEFT, OP_LSL_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_SHIFT_RIGHT, OP_LSR_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_ADD, OP_ADD_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_SUB, OP_SUB_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_NEQ, OP_NEQ_16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_EQ, OP_EQ_16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_GT, OP_GT_I16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_LT, OP_LT_I16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_GTE, OP_GTE_I16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_LTE, OP_LTE_I16, TT_PRIM_I16, TT_PRIM_I16, BOOL },
+    { OPERATOR_MUL, OP_MUL_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_DIV, OP_DIV_U16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_MODULO, OP_MOD_U16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITXOR, OP_XOR_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITAND, OP_AND_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITOR, OP_OR_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_PLUSASSIGN, OP_ADD_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_MINUSASSIGN, OP_SUB_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_MULASSIGN, OP_MUL_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_DIVASSIGN, OP_DIV_ASSIGN_U16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_MODASSIGN, OP_MOD_ASSIGN_U16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_LSHIFTASSIGN, OP_LSL_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_RSHIFTASSIGN, OP_LSR_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITANDASSIGN, OP_AND_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITORASSIGN, OP_OR_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_BITXORASSIGN, OP_XOR_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PRIM_I16, TT_PRIM_I16, I16 },
+    { OPERATOR_UNARY_NEG, OP_UNARY_NEG_16, TT_PRIM_I16, TT_PRIM_VOID, I16 },
+    { OPERATOR_UNARY_BITNOT, OP_NOT_16, TT_PRIM_I16, TT_PRIM_VOID, I16 },
     { -1 }
 };
 
@@ -396,14 +427,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
 
                 // valid casts in li
                 if (is_type_eq(from_type, t) ||
-                    // casts between signed and unsigned
-                    (from_type == U8 && t == I8) ||
-                    (from_type == I8 && t == U8) ||
-                    (from_type == U16 && t == I16) ||
-                    (from_type == I16 && t == U16) ||
-                    // size changes
-                    (from_type == U8 && t == U16) ||
-                    (from_type == U16 && t == U8) ||
+                    // casts between integers
+                    (
+                     (from_type == U8 || from_type == I8 || from_type == U16 || from_type == I16) &&
+                     (t == U8 || t == I8 || t == U16 || t == I16)
+                    ) ||
                     (get_type(t)->type == TT_PTR && from_type == U16) ||
                     (get_type(from_type)->type == TT_PTR && t == U16) ||
                     (get_type(from_type)->type == TT_PTR && get_type(t)->type == TT_PTR)

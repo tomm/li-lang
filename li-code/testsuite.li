@@ -95,13 +95,15 @@ fn main() {
     expect({var x=255u8 3u8 x as i8 == -1i8})
     expect(0xdeu8 as u16 == 0xdeu16)
     expect({var x=0xdeu8 x as u16 == 0xdeu16})
+    expect({-1i8} as i16 == -1i16)
+    expect({-1i8} as u16 == 255u16)
     // local scopes
     expect(test_local_scope(66) == 6)
     // forward/extern declarations
     expect(test_fwd_decl(2) == 3)
     // if expression
-    expect({if 1==1 0xcafeu16 else 0xdeadu16} == 0xcafe)
-    expect({if 0==1 {0xcafeu16} else {0xdeadu16}} == 0xdead)
+    expect({if 1==1 0xcafe_u16 else 0xdead_u16} == 0xcafe)
+    expect({if 0==1 {0xcafe_u16} else {0xdead_u16}} == 0xdead)
     // == operator
     expect(eq_u8(4,4))
     expect(!eq_u8(5,6))

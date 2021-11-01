@@ -1372,6 +1372,37 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
     return result;
 }
 
+static Value emit_zero_extend_8_16(Value v, TypeId to_type) {
+    assert(v.typeId == U8 || v.typeId == I8);
+    assert(to_type == U16 || to_type == I16);
+
+    emit_value_to_register(v, false);  // v1 in `a`
+    _i("ld h, 0");
+    _i("ld l, a");
+    return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+}
+
+static Value emit_sign_extend_i8_i16(Value v) {
+    assert(v.typeId == I8);
+    emit_value_to_register(v, false);  // v in `a`
+    const int on_pve = _local_label_seq++;
+    _i("ld l, a");
+    _i("ld h, 0");
+    _i("bit 7, a");
+    _i("jr z, .l%d", on_pve);
+    _i("dec h");
+    _label(on_pve);
+    return (Value) { .typeId = I16, .storage = ST_REG_VAL };
+}
+
+static Value emit_truncate_16_8(Value v, TypeId to_type) {
+    assert(to_type == U8 || to_type == I8);
+
+    emit_value_to_register(v, false);  // v in `hl`
+    _i("ld a, l");
+    return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
+}
+
 static Value emit_cast(NodeIdx cast, StackFrame frame) {
     AstNode *n = get_node(cast);
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
@@ -1379,26 +1410,12 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
     TypeId to_type = n->expr.cast.to_type;
     Value v1 = emit_expression(n->expr.cast.arg, frame);
 
+    /* Miscellaneous li type casts */
     if ((v1.typeId == to_type) ||
-        (v1.typeId == U8 && to_type == I8) ||
-        (v1.typeId == I8 && to_type == U8) ||
         (get_type(to_type)->type == TT_PTR && get_type(v1.typeId)->type == TT_PTR) ||
         (v1.typeId == U16 && get_type(to_type)->type == TT_PTR) ||
         (to_type == U16 && get_type(v1.typeId)->type == TT_PTR)) {
-        // no-op casts
-        return (Value) { .typeId = to_type, .storage = v1.storage };
-
-    } else if (v1.typeId == U8 && to_type == U16) {
-        v1 = emit_value_to_register(v1, false);  // v1 in `a`
-        _i("ld h, 0");
-        _i("ld l, a");
-        return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
-
-    } else if (v1.typeId == U16 && to_type == U8) {
-        v1 = emit_value_to_register(v1, false);  // v1 in `hl`
-        _i("ld a, l");
-        return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
-
+        goto no_op_cast;
     } else if (get_type(v1.typeId)->type == TT_ARRAY &&
                get_type(to_type)->type == TT_PTR &&
                is_type_eq(get_type(v1.typeId)->array.contained,
@@ -1406,10 +1423,62 @@ static Value emit_cast(NodeIdx cast, StackFrame frame) {
         // consider EA of array to be REG_VAL of ptr
         assert(v1.storage == ST_REG_EA);
         return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
-
-    } else {
-        assert(false);
     }
+ 
+    /* all those godddddddam integer to integer conversions */
+    switch (v1.typeId) {
+        case U8: {
+                switch (to_type) {
+                    case U8: goto no_op_cast;
+                    case I8: goto no_op_cast;
+                    case U16:
+                    case I16:
+                        return emit_zero_extend_8_16(v1, to_type);
+                    default: assert(false);
+                }
+            }
+            break;
+        case I8: {
+                switch (to_type) {
+                    case U8: goto no_op_cast;
+                    case I8: goto no_op_cast;
+                    case U16:
+                        return emit_zero_extend_8_16(v1, to_type);
+                    case I16:
+                        return emit_sign_extend_i8_i16(v1);
+                    default: assert(false);
+                }
+            }
+            break;
+        case U16: {
+                switch (to_type) {
+                    case U8:
+                    case I8:
+                        return emit_truncate_16_8(v1, to_type);
+                    case U16: goto no_op_cast;
+                    case I16: goto no_op_cast;
+                    default: assert(false);
+                }
+            }
+            break;
+        case I16: {
+                switch (to_type) {
+                    case U8:
+                    case I8:
+                        return emit_truncate_16_8(v1, to_type);
+                    case U16: goto no_op_cast;
+                    case I16: goto no_op_cast;
+                    default: assert(false);
+                }
+            }
+            break;
+        default: assert(false);
+    }
+
+    assert(false);
+
+no_op_cast:
+    return (Value) { .typeId = to_type, .storage = v1.storage };
 }
 
 static void emit_call_push_args(int arg_num, NodeIdx arg_list_head, StackFrame *frame) {
@@ -1639,17 +1708,17 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                     // should not reach backend
                     assert(false);
                 case LIT_BOOL:
-                    _i("ld a, %d", n->expr.literal.literal_bool ? 1 : 0);
+                    _i("ld a, %hhu", (int8_t)(n->expr.literal.literal_bool ? 1 : 0));
                     v = (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
                     break;
                 case LIT_U8:
                 case LIT_I8:
-                    _i("ld a, $%x", n->expr.literal.literal_int);
+                    _i("ld a, %hhu", (int8_t)n->expr.literal.literal_int);
                     v = (Value) { .typeId = n->expr.eval_type, .storage = ST_REG_VAL };
                     break;
                 case LIT_U16:
                 case LIT_I16:
-                    _i("ld hl, $%x", n->expr.literal.literal_int);
+                    _i("ld hl, %hu", (int16_t)n->expr.literal.literal_int);
                     v = (Value) { .typeId = n->expr.eval_type, .storage = ST_REG_VAL };
                     break;
                 case LIT_VOID:
@@ -1833,15 +1902,15 @@ static void _emit_const(NodeIdx node) {
 
     switch (n->expr.literal.type) {
         case LIT_BOOL:
-            _i("db %d", n->expr.literal.literal_bool ? 1 : 0);
+            _i("db %hhu", (int8_t)(n->expr.literal.literal_bool ? 1 : 0));
             break;
         case LIT_U8:
         case LIT_I8:
-            _i("db %d", n->expr.literal.literal_int);
+            _i("db %hhu", (int8_t)n->expr.literal.literal_int);
             break;
         case LIT_U16:
         case LIT_I16:
-            _i("dw %d", n->expr.literal.literal_int);
+            _i("dw %hu", (int16_t)n->expr.literal.literal_int);
             break;
         case LIT_VOID:
             break;

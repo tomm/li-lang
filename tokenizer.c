@@ -273,6 +273,7 @@ Vec lex(Str buf, const char *filename) {
             } else {
                 pos += 2;
                 while (isxdigit(*pos)) NEXT();
+                while (*pos == '_') NEXT();
                 
                 if (*pos == 'u' && LOOK_AHEAD() == '8') {
                     t.type = T_LITERAL_U8;
@@ -303,6 +304,7 @@ Vec lex(Str buf, const char *filename) {
                 NEXT();
             } else {
                 while (isdigit(*pos)) NEXT();
+                while (*pos == '_') NEXT();
                 
                 if (*pos == 'u' && LOOK_AHEAD() == '8') {
                     t.type = T_LITERAL_U8;
