@@ -34,48 +34,116 @@ __mul16:
 
 __divi8:
     ; [remainder:quotient] b:a = a / b
-        ld c, a
-        ld d, a ; bit7: remainder -ve, bit0: result -ve
-        res 0, d
-        xor a, b
-        bit 7, a
-        jr z, .result_pve
-        set 0, d
-    .result_pve:
-        ; abs of divisor and dividend
-        bit 7, b
-        jr z, .divisor_pve
-        ld a, b
-        cpl
-        inc a
+        ld c, b
         ld b, a
-    .divisor_pve:
+
+        ; h = qsign bit7, rsign bit0
+        xor c
+        ld h, a
+        res 0, h
         bit 7, c
-        jr z, .dividend_pve
-        ld a, c
-        cpl
-        inc a
+        jr z, .not_rsign
+        set 0, h
+    .not_rsign
+        ; divisor = abs(divisor)
+        bit 7, c
+        jr z, .pve_divisor
+        xor a
+        sub c
         ld c, a
-    .dividend_pve:
-        ld a, c
-        push de
-        call __divu8
-        pop de
-        ; remainder should be negative?
-        bit 7, d
-        jr z, .remainder_pve
-        ld c, a
-        ld a, b
-        cpl
-        inc a
+    .pve_divisor
+        ; dividend = abs(dividend)
+        bit 7, b
+        jr z, .pve_dividend
+        xor a
+        sub b
         ld b, a
-        ld a, c
-    .remainder_pve:
-        ; quotient should be negative?
-        bit 0, d
-        ret z
+    .pve_dividend
+
+        xor a
+        cp a, c
+        jr z, .zero_divisor
+
+        ; b / c
+        ; find highest POT multiple of divisor (c) that is <= dividend (b)
+        ; 
+        ld e, c  ; e = multiple of c
+        ld d, 1  ; d = e/c
+
+    .potmul_loop
+        bit 7, e
+        jp nz, .found_max_pot
+
+        sla d
+        sla e
+        ld a, b
+        cp a, e
+        jr c, .overshot
+        jr z, .found_max_pot
+        jr .potmul_loop
+
+    .overshot
+        srl d
+        srl e
+        ; found max multiple
+    .found_max_pot
+
+        ; now subtract decreasing POT multiples of c from b,
+        ; composing the quotient
+        ld l, 0 ; quotient
+
+        bit 7, h
+        jr z, .qsign_pve
+        ; quotient -= mult<<1
+        ld a, d
+        sla a
         cpl
         inc a
+        ld l, a
+        ; remainder = (max_pot2_divisor<<1) - remainder
+        ld a, e
+        sla a
+        sub b
+        ld b, a
+    .qsign_pve
+
+        ; l = quot
+        ; b = remainder
+        ; d = mult
+        ; e = pot2
+    .div_loop
+        ld a, b
+        cp a, e
+        jr c, .not_contain_this_pot
+        ; subtract POT multiple of c from b
+        ld a, b
+        sub a, e
+        ld b, a
+
+        ; increase quotient
+        ld a, l
+        add a, d
+        ld l, a
+    .not_contain_this_pot
+        srl e
+        srl d
+        jr nz, .div_loop
+
+        ; if rsign; remainder = -remainder
+        bit 0, h
+        jr z, .rsign_pve
+        xor a
+        sub b
+        ld b, a
+    .rsign_pve
+
+        ld a, l
+        ret
+
+    .zero_divisor
+        ; saturation divide ;)
+        ld a, 255
+        ld b, 0
         ret
 
 __divu8:
@@ -145,6 +213,64 @@ __divu8:
         ; saturation divide ;)
         ld a, 255
         ld b, 0
+        ret
+
+__divi16:
+    ; remainder:quotient de:hl = hl / de
+        ld b, h ; result flag: bit7: remainder -ve, bit0: result -ve
+        res 0, b
+        ld a, b
+        xor d
+        bit 7, a
+        jr z, .result_pve
+        set 0, b
+    .result_pve:
+        ; calculate abs of divisor (de)
+        bit 7, d
+        jr z, .divisor_pve
+        xor a
+        ld c, a
+        sub e
+        ld e, a
+        ld a, c
+        sbc d
+        ld d, a
+    .divisor_pve:
+        ; calculate abs of dividend (hl)
+        bit 7, h
+        jr z, .dividend_pve
+        xor a
+        ld c, a
+        sub l
+        ld l, a
+        ld a, c
+        sbc h
+        ld h, a
+    .dividend_pve:
+        push bc
+        call __divu16
+        pop bc
+        ; remainder should be negative?
+        bit 7, b
+        jr z, .remainder_pve
+        xor a
+        ld c, a
+        sub e
+        ld e, a
+        ld a, c
+        sbc d
+        ld d, a
+    .remainder_pve:
+        ; quotient should be negative?
+        bit 0, b
+        ret z
+        xor a
+        ld c, a
+        sub l
+        ld l, a
+        ld a, c
+        sbc h
+        ld h, a
         ret
 
 __divu16:

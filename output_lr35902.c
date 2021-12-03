@@ -1001,9 +1001,14 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
             _i("dec hl");
             break;
         case OP_DIV_ASSIGN_U16:
+        case OP_DIV_ASSIGN_I16:
             _i("push hl");
             emit_value_to_register(v1, false);
-            _i("call __divu16");
+            if (op == OP_DIV_ASSIGN_U16) {
+                _i("call __divu16");
+            } else {
+                _i("call __divi16");
+            }
             _i("ld d, h");
             _i("ld e, l");
             _i("pop hl");
@@ -1013,9 +1018,14 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
             _i("dec hl");
             break;
         case OP_MOD_ASSIGN_U16:
+        case OP_MOD_ASSIGN_I16:
             _i("push hl");
             emit_value_to_register(v1, false);
-            _i("call __divu16");
+            if (op == OP_MOD_ASSIGN_U16) {
+                _i("call __divu16");
+            } else {
+                _i("call __divi16");
+            }
             _i("pop hl");
             _i("ld [hl], e");
             _i("inc hl");
@@ -1157,6 +1167,14 @@ Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
             break;
         case OP_DIV_U16:
             _i("call __divu16");
+            break;
+        case OP_DIV_I16:
+            _i("call __divi16");
+            break;
+        case OP_MOD_I16:
+            _i("call __divi16");
+            _i("ld h, d");
+            _i("ld l, e");
             break;
         case OP_MOD_U16:
             _i("call __divu16");
@@ -1319,6 +1337,8 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_MUL_16:
         case OP_DIV_U16:
         case OP_MOD_U16:
+        case OP_DIV_I16:
+        case OP_MOD_I16:
         case OP_LSL_16:
         case OP_LSR_16:
         case OP_EQ_16:
@@ -1372,6 +1392,8 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_MUL_ASSIGN_16:
         case OP_DIV_ASSIGN_U16:
         case OP_MOD_ASSIGN_U16:
+        case OP_DIV_ASSIGN_I16:
+        case OP_MOD_ASSIGN_I16:
         case OP_LSL_ASSIGN_16:
         case OP_LSR_ASSIGN_16:
         case OP_ASR_ASSIGN_16:

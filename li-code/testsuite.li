@@ -270,9 +270,13 @@ fn main() {
     expect(div_i8(10,-5) == -2)
     expect(div_i8(-10,5) == -2)
     expect(div_i8(-10,-5) == 2)
+    expect(div_i8(-10,3) == -4)
+    expect(div_i8(-10,-3) == 3)
     expect(div_i8(-128,1) == -128)
     expect(div_i8(-127,-1) == 127)
     expect(div_i8(-128,-1) == -128) // because 2s complement ;)
+    expect(div_i8(10,15) == 0)
+    expect(div_i8(-10,15) == -1)
 
     expect(div_u16(65535, 1) == 65535)
     expect(div_u16(65535, 2) == 32767)
@@ -280,6 +284,11 @@ fn main() {
     expect(div_u16(1234, 0) == 65535)
     expect(div_u16(1234, 2000) == 0)
     expect(div_u16(44132, 127) == 347)
+
+    //expect(div_i16(-32000, 2) == -16000)
+    //expect(div_i16(-32000, -100) == 320)
+    //expect(div_i16(16000, 10) == 1600)
+    //expect(div_i16(6789, -2345) == -3)
     // modulo
     expect(mod_u8(23,0) == 0)
     expect(mod_u8(133,200) == 133) // divisor > dividend
@@ -287,9 +296,11 @@ fn main() {
     expect(mod_u8(5,5) == 0)
 
     expect(mod_i8(11,3) == 2)
-    expect(mod_i8(-11,3) == -2)
-    expect(mod_i8(11,-3) == 2)
+    expect(mod_i8(-11,3) == 1)
+    expect(mod_i8(11,-3) == -1)
     expect(mod_i8(-11,-3) == -2)
+    expect(mod_i8(10,15) == 10)
+    expect(mod_i8(10,-15) == -5)
 
     expect(mod_u16(65535, 1) == 0)
     expect(mod_u16(65535, 2) == 1)
@@ -449,9 +460,11 @@ fn sub_u16(a: u16, b: u16) -> u16 { a - b }
 fn div_u8(a: u8, b: u8) -> u8 { a / b }
 fn div_i8(a: i8, b: i8) -> i8 { a / b }
 fn div_u16(a: u16, b: u16) -> u16 { a / b }
+fn div_i16(a: i16, b: i16) -> i16 { a / b }
 fn mod_u8(a: u8, b: u8) -> u8 { a % b }
 fn mod_i8(a: i8, b: i8) -> i8 { a % b }
 fn mod_u16(a: u16, b: u16) -> u16 { a % b }
+fn mod_i16(a: i16, b: i16) -> i16 { a % b }
 fn mul_u8(a: u8, b: u8) -> u8 { a * b }
 fn mul_i8(a: i8, b: i8) -> i8 { a * b }
 fn mul_u16(a: u16, b: u16) -> u16 { a * b }
