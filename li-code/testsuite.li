@@ -266,6 +266,8 @@ fn main() {
     expect(div_u8(5,5) == 1)
     expect(div_u8(10,5) == 2)
 
+    expect(div_i8(123,0) == 127)
+    expect(div_i8(-123,0) == -128)
     expect(div_i8(10,5) == 2)
     expect(div_i8(10,-5) == -2)
     expect(div_i8(-10,5) == -2)
@@ -287,6 +289,8 @@ fn main() {
     expect(div_u16(44132, 127) == 347)
     expect(div_u16(10, 2) == 5)
 
+    expect(div_i16(32000, 0) == 32767)
+    expect(div_i16(-32000, 0) == -32768)
     expect(div_i16(32000, 2) == 16000)
     expect(div_i16(-32000, 2) == -16000)
     expect(div_i16(-32000, -100) == 320)
@@ -312,6 +316,7 @@ fn main() {
     expect(mod_u16(1234, 2000) == 1234)
     expect(mod_u16(44132, 127) == 63)
 
+    expect(mod_i16(1100,0) == 0)
     expect(mod_i16(1100,300) == 200)
     expect(mod_i16(-1100,300) == 100)
     expect(mod_i16(1100,-300) == -100)

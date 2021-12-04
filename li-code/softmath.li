@@ -32,6 +32,13 @@ __mul16:
     ENDR
         ret
 
+__divu8:
+    ; [remainder:quotient] b:a = a / b
+        ld c, b
+        ld b, a
+        ld h, 0
+        jr __div8
+
 __divi8:
     ; [remainder:quotient] b:a = a / b
         ld c, b
@@ -59,7 +66,14 @@ __divi8:
         sub b
         ld b, a
     .pve_dividend
+        set 1, h ; is signed arith
 
+__div8:
+    ; [remainder:quotient] b:a = a / b
+    ; a = abs(dividend), b = abs(divisor)
+    ; h & 0x01 = remainder sign
+    ; h & 0x02 = is signed arithmetic
+    ; h & 0x80 = quotient sign
         xor a
         cp a, c
         jr z, .zero_divisor
@@ -142,77 +156,14 @@ __divi8:
 
     .zero_divisor
         ; saturation divide ;)
-        ld a, 255
         ld b, 0
-        ret
-
-__divu8:
-    ; [remainder:quotient] b:a = a / b
-        ld c, b
-        ld b, a
-
-        xor a
-        cp a, c
-        jr z, .zero_divisor
-
-        ld a, b
-        cp a, c
-        jr c, .divisor_gt_dividend
-        ; b / c
-        ; find highest POT multiple of divisor (c) that is <= dividend (b)
-        ; 
-        ld e, c  ; e = multiple of c
-        ld d, 1  ; d = e/c
-
-    .potmul_loop
-        ld a, b
-        cp a, e
-        jr c, .overshot
-        jr z, .found_max_pot
-        bit 7, e
-        jp nz, .found_max_pot
-        sla e
-        sla d
-        jr .potmul_loop
-
-    .overshot
-        srl d
-        srl e
-        ; found max multiple
-    .found_max_pot
-
-        ; now subtract decreasing POT multiples of c from b,
-        ; composing the quotient
-        ld l, 0 ; quotient
-
-    .div_loop
-        ld a, b
-        cp a, e
-        jr c, .not_contain_this_pot
-        ; subtract POT multiple of c from b
-        ld a, b
-        sub a, e
-        ld b, a
-
-        ; increase quotient
-        ld a, l
-        add a, d
-        ld l, a
-    .not_contain_this_pot
-        srl e
-        srl d
-        jr nz, .div_loop
-        ld a, l
-        ret
-
-    .divisor_gt_dividend
-        ld a, 0
-        ret
-    
-    .zero_divisor
-        ; saturation divide ;)
         ld a, 255
-        ld b, 0
+        bit 1, h
+        ret z
+        ld a, 127
+        bit 7, h
+        ret z
+        ld a, -128
         ret
 
 __divi16:
@@ -249,6 +200,7 @@ __divi16:
     .dividend_pve:
         ; quotient, remainder sign flags passed in a
         ld a, b
+        set 1, a ; is signed arith
         call __div16
         ret
 
@@ -257,8 +209,9 @@ __divu16:
 
 __div16:
     ; hl = abs(dividend), de = abs(divisor)
-    ; a & 0x80 = quotient sign
     ; a & 0x01 = remainder sign
+    ; a & 0x02 = is signed arithmetic
+    ; a & 0x80 = quotient sign
     ; returns remainder:quotient de:hl = hl / de
         push af
 
@@ -419,13 +372,25 @@ __div16:
             ret
 
     .zero_divisor
-        ; saturation arith. 1/0 = 2^16 - 1
-        ld a, $ff
-        ld h, a
-        ld l, a
+        ; saturation arith
         xor a
         ld d, a
         ld e, a
-        pop af
+
+        ; unsigned: hl = 0xffff
+        ld a, $ff
+        ld h, a
+        ld l, a
+        pop bc
+
+        bit 1, b
+        ret z
+        ; signed +ve: hl = 0x7fff
+        ld h, $7f
+        bit 7, b
+        ret z
+        ; signed -ve: hl = 0x8000
+        inc h
+        inc l
         ret
 ")
