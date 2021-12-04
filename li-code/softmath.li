@@ -295,25 +295,27 @@ __divu16:
         ld c, 1
 
     .potmul_loop
-        ; POT_mul > dividend? we overshot
-        ld a, h
-        cp a, d
-        jr c, .overshot
-        jr nz, .skip2
-        ld a, l
-        cp a, e
-        jr c, .overshot
-    .skip2
         ; if highest bit of POT_mul is set, can't rotate further
         bit 7, d
         jp nz, .found_max_pot
+
         ; POT_mul *= 2
         sla e
         rl d
         ; mul_num *= 2
         sla c
         rl b
-        jr .potmul_loop
+
+        ; POT_mul > dividend? we overshot
+        ld a, h
+        cp a, d
+        jr c, .overshot
+        jr nz, .potmul_loop
+        ld a, l
+        cp a, e
+        jr c, .overshot
+        jr nz, .potmul_loop
+        jr .found_max_pot
 
     .overshot
         ; POT_mul /= 2
