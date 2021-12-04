@@ -284,11 +284,14 @@ fn main() {
     expect(div_u16(1234, 0) == 65535)
     expect(div_u16(1234, 2000) == 0)
     expect(div_u16(44132, 127) == 347)
+    expect(div_u16(44132, 127) == 347)
+    expect(div_u16(10, 2) == 5)
 
-    //expect(div_i16(-32000, 2) == -16000)
-    //expect(div_i16(-32000, -100) == 320)
-    //expect(div_i16(16000, 10) == 1600)
-    //expect(div_i16(6789, -2345) == -3)
+    expect(div_i16(32000, 2) == 16000)
+    expect(div_i16(-32000, 2) == -16000)
+    expect(div_i16(-32000, -100) == 320)
+    expect(div_i16(16000, 10) == 1600)
+    expect(div_i16(6789, -2345) == -3)
     // modulo
     expect(mod_u8(23,0) == 0)
     expect(mod_u8(133,200) == 133) // divisor > dividend
@@ -308,6 +311,14 @@ fn main() {
     expect(mod_u16(1234, 0) == 0)
     expect(mod_u16(1234, 2000) == 1234)
     expect(mod_u16(44132, 127) == 63)
+
+    expect(mod_i16(1100,300) == 200)
+    expect(mod_i16(-1100,300) == 100)
+    expect(mod_i16(1100,-300) == -100)
+    expect(mod_i16(-1100,-300) == -200)
+    expect(mod_i16(1000,1500) == 1000)
+    expect(mod_i16(1000,-1500) == -500)
+
     // shifts
     expect(shl_u8(6, 0) == 6)
     expect(shl_u8(6, 3) == 48)

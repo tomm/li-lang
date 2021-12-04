@@ -1,4 +1,3 @@
-* i16 div and mod
 * many compile errors still need to be moved from backend to frontend
 * function pointers
 * structs

@@ -94,7 +94,7 @@ __divi8:
 
         bit 7, h
         jr z, .qsign_pve
-        ; quotient -= mult<<1
+        ; quotient = -mult<<1
         ld a, d
         sla a
         cpl
@@ -217,15 +217,15 @@ __divu8:
 
 __divi16:
     ; remainder:quotient de:hl = hl / de
-        ld b, h ; result flag: bit7: remainder -ve, bit0: result -ve
-        res 0, b
-        ld a, b
+        ld a, h ; result flag: bit0: remainder -ve, bit7: result -ve
         xor d
-        bit 7, a
+        res 0, a
+        bit 7, d
         jr z, .result_pve
-        set 0, b
+        set 0, a
     .result_pve:
-        ; calculate abs of divisor (de)
+        ld b, a
+        ; de = abs(de)
         bit 7, d
         jr z, .divisor_pve
         xor a
@@ -236,7 +236,7 @@ __divi16:
         sbc d
         ld d, a
     .divisor_pve:
-        ; calculate abs of dividend (hl)
+        ; hl = abs(hl)
         bit 7, h
         jr z, .dividend_pve
         xor a
@@ -247,46 +247,25 @@ __divi16:
         sbc h
         ld h, a
     .dividend_pve:
-        push bc
-        call __divu16
-        pop bc
-        ; remainder should be negative?
-        bit 7, b
-        jr z, .remainder_pve
-        xor a
-        ld c, a
-        sub e
-        ld e, a
-        ld a, c
-        sbc d
-        ld d, a
-    .remainder_pve:
-        ; quotient should be negative?
-        bit 0, b
-        ret z
-        xor a
-        ld c, a
-        sub l
-        ld l, a
-        ld a, c
-        sbc h
-        ld h, a
+        ; quotient, remainder sign flags passed in a
+        ld a, b
+        call __div16
         ret
 
 __divu16:
-    ; remainder:quotient de:hl = hl / de
+        xor a
+
+__div16:
+    ; hl = abs(dividend), de = abs(divisor)
+    ; a & 0x80 = quotient sign
+    ; a & 0x01 = remainder sign
+    ; returns remainder:quotient de:hl = hl / de
+        push af
+
         ld a, d
         or e
-        jr z, .zero_divisor
+        jp z, .zero_divisor
 
-        ld a, h
-        cp a, d
-        jr c, .divisor_gt_dividend
-        jr nz, .skip
-        ld a, l
-        cp a, e
-        jr c, .divisor_gt_dividend
-    .skip
         ; find highest POT multiple of divisor that is <= dividend
         ; de = POT_mul (pot multiple of divisor)
         ; hl = dividend
@@ -336,11 +315,46 @@ __divu16:
         ; stack is:
         ; sp+0 = quotient
         ; sp+2 = remainder
+        ; sp+5 = qsign, rsign flags
 
         ; regs are:
         ; de = POT_mul
         ; hl = <ptr temporary>
         ; bc = mul_num
+
+        ld hl, sp+5
+        bit 7, [hl]
+        jr z, .div_loop
+        ; if qsign
+            ; quotient = -mult<<1
+            ld hl, sp+0
+            push bc
+                sla c
+                rl b
+
+                xor a
+                sub c
+                ld [hl+], a
+
+                ld a, 0
+                sbc b
+                ld [hl], a
+            pop bc
+
+            ; remainder = POT_mul<<1 - remainder
+            ld hl, sp+2
+            push de
+                sla e
+                rl d
+
+                ld a, e
+                sub [hl]
+                ld [hl+], a
+
+                ld a, d
+                sbc [hl]
+                ld [hl], a
+            pop de
 
     .div_loop
         ; POT_mul > remainder?
@@ -391,8 +405,18 @@ __divu16:
         ; quotient to hl, remainder to de
         pop hl
         pop de
+        pop af
 
-        ret
+        bit 0, a
+        ret z
+            ; if rsign: remainder -= remainder
+            xor a
+            sub e
+            ld e, a
+            ld a, 0
+            sbc d
+            ld d, a
+            ret
 
     .zero_divisor
         ; saturation arith. 1/0 = 2^16 - 1
@@ -402,15 +426,6 @@ __divu16:
         xor a
         ld d, a
         ld e, a
+        pop af
         ret
-
-    .divisor_gt_dividend
-        ld d, h
-        ld e, l
-        xor a
-        ld h, a
-        ld l, a
-        ret
-
-
 ")
