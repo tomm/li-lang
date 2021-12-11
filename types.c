@@ -117,6 +117,36 @@ TypeId make_ptr_type(TypeId ref) {
     });
 }
 
+/* Takes ownership of *args */
+TypeId make_fn_type(Vec/*<TypeId>*/ *args, TypeId ret) {
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "fn(");
+    for (int i=0; i<args->len; i++) {
+        Str arg_typename = get_type(*(TypeId*)vec_get(args, i))->name;
+        snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+                "%.*s", arg_typename.len, arg_typename.s);
+        if (i < args->len - 1) {
+            strcat(buf, ",");
+        }
+    }
+    strcat(buf, ") -> ");
+    const Type *_ret = get_type(ret);
+    snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+            "%.*s", _ret->name.len, _ret->name.s);
+
+    return add_type((Type) {
+        .name = { .s = strdup(buf), .len = strlen(buf) },
+        .size = 0,
+        .stack_size = 0,
+        .stack_offset = 0,
+        .type = TT_FUNC,
+        .func = {
+            .args = *args,
+            .ret = ret
+        }
+    });
+}
+
 TypeId make_array_type(int num_elems, TypeId contained) {
     char buf[256];
     snprintf(buf, sizeof(buf), "[%.*s; %d]",

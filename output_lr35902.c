@@ -289,6 +289,8 @@ static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
 
     switch (t->type) {
         case TT_UNKNOWN:
+            // should not reach backend
+            assert(false);
         case TT_FUNC:
             // should not reach backend
             assert(false);
@@ -1567,7 +1569,38 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
 
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
-    if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
+
+    if (true) {//n->expr.call.is_indirect) {
+        const int return_label = _local_label_seq++;
+        // call by function pointer
+        const int old_stack = frame.stack_offset;
+        emit_call_push_args(0, n->expr.call.first_arg, &frame);
+        _i("ld hl, .l%d", return_label);
+        _i("push hl");
+        // hl = function address 
+        Value fn = emit_expression(n->expr.call.callee, frame);
+        _i("jp hl");
+        _label(return_label);
+        const int stack_correction = frame.stack_offset - old_stack;
+        if (stack_correction) {
+            _i("add sp, %d", stack_correction);
+        }
+        frame.stack_offset += stack_correction;
+
+        if (n->expr.call.is_indirect) {
+            Type *fntype = get_type(fn.typeId);
+            Type *rettype = get_type(fntype->func.ret);
+            assert(fntype->type == TT_PTR && get_type(fntype->ptr.ref)->type == TT_FUNC);
+            return (Value) { .typeId = get_type(fntype->ptr.ref)->func.ret,
+                .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
+        } else {
+            Type *fntype = get_type(fn.typeId);
+            Type *rettype = get_type(fntype->func.ret);
+            assert(fntype->type == TT_FUNC);
+            return (Value) { .typeId = fntype->func.ret, .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
+        }
+    } else {
+        assert (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT);
         const AstNode *fn = lookup_global_sym(callee->expr.ident);
 
         // actualy compile error emitted by program.c
@@ -1587,8 +1620,6 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
         Type *rettype = get_type(fntype->func.ret);
         assert(fntype->type == TT_FUNC);
         return (Value) { .typeId = fntype->func.ret, .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
-    } else {
-        fatal_error(callee->start_token, "fn call by expression not implemented");
     }
 }
 
@@ -1687,12 +1718,17 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     const AstNode *global = lookup_global_sym(n->expr.ident);
 
     if (global) {
-        if (global->type != AST_DEF_VAR) {
-            fatal_error(n->start_token, "%.*s is not a variable",
-                    (int)n->expr.ident.len, n->expr.ident.s);
-        }
         _i("ld hl, %.*s", (int)n->expr.ident.len, n->expr.ident.s);
-        return (Value) { .typeId = global->var_def.type, .storage = ST_REG_EA };
+
+        if (global->type == AST_DEF_VAR) {
+            return (Value) { .typeId = global->var_def.type, .storage = ST_REG_EA };
+        }
+        else if (global->type == AST_FN) {
+            return (Value) { .typeId = global->fn.type, .storage = ST_REG_EA };
+        }
+        else {
+            assert(false);
+        }
     }
 
     fatal_error(n->start_token, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);

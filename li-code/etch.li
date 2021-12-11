@@ -4,6 +4,8 @@ include "li-code/nonstdlib.li"
 const BG = 0x9800 as @[[u8; 32]; 32],
       TILES = 0x8000 as @[[u16; 8]; 256]
 
+const start = 0x150 as @fn() -> void
+
 fn main() {
     // turn off sound
     0xff26 as @u8 #= 0
@@ -34,7 +36,7 @@ fn main() {
         if gamepad_pressed == 0x40 { etch_y -= 1 }
         if gamepad_pressed == 0x20 { etch_x -= 1 }
         if gamepad_pressed == 0x10 { etch_x += 1 }
-        if gamepad_pressed == 0x8 { `jp __start` }
+        if gamepad_pressed == 0x8 { start() }
 
         clear_gamepad()
     }
@@ -66,7 +68,7 @@ fn wait_vblank() {`
     .loop:
         ld a, [$ff44]
         cp a, 144
-        jr c, .loop
+        jr nz, .loop
 `}
 
 //    0x8 start 0x4 select     0x2 B         0x1 A

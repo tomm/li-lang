@@ -396,6 +396,64 @@ static void validate_return(const Token *t, TypeId expected, TypeId returned) {
     }
 }
 
+static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
+{
+    AstNode *n = get_node(call);
+    assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
+    // is it a built-in op?
+    AstNode *callee = get_node(n->expr.call.callee);
+    TypeId fn_type = typecheck_expr(prog, scope, n->expr.call.callee, TYPE_UNKNOWN);
+    bool is_indirect = false;
+
+    if (get_type(fn_type)->type == TT_PTR &&
+        get_type(get_type(fn_type)->ptr.ref)->type == TT_FUNC) {
+        // indirect function call
+        fn_type = get_type(fn_type)->ptr.ref;
+        is_indirect = true;
+    }
+
+    // update AST with 'is_indirect', now we know
+    n->expr.call.is_indirect = is_indirect;
+
+    if (get_type(fn_type)->type == TT_FUNC) {
+        if (get_type(fn_type)->func.args.len !=
+            ast_node_sibling_size(n->expr.call.first_arg)) {
+            if (is_indirect) {
+                fatal_error(callee->start_token, "function expected %d arguments but %d given",
+                        (int)get_type(fn_type)->func.args.len,
+                        ast_node_sibling_size(n->expr.call.first_arg));
+            } else {
+                fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
+                        (int)callee->expr.ident.len, callee->expr.ident.s,
+                        (int)get_type(fn_type)->func.args.len,
+                        ast_node_sibling_size(n->expr.call.first_arg));
+            }
+        }
+
+        // check each argument
+        Vec *argdef = &get_type(fn_type)->func.args;
+        NodeIdx arg = n->expr.call.first_arg;
+
+        for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
+            TypeId expected_type = *(TypeId*)vec_get(argdef, i);
+            TypeId passed_type = typecheck_expr(prog, scope, arg, expected_type);
+            if (!is_type_eq(passed_type, expected_type)) {
+
+                fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
+                        i + 1,
+                        (int)get_type(passed_type)->name.len,
+                        get_type(passed_type)->name.s,
+                        (int)get_type(expected_type)->name.len,
+                        get_type(expected_type)->name.s);
+            }
+        }
+
+        return get_type(fn_type)->func.ret;
+    } else {
+        fatal_error(callee->start_token, "fn call by expression not implemented");
+    }
+}
+
 // XXX also resolves gotos. why do we do both? because AST isn't simple
 // to traverse...
 static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
@@ -545,53 +603,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             }
             break;
         case EXPR_CALL:
-            {
-                // is it a built-in op?
-                AstNode *callee = get_node(n->expr.call.callee);
-                if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
-                    typecheck_expr(prog, scope, n->expr.call.callee, TYPE_UNKNOWN);
-                    Symbol *fn_sym = lookup_program_symbol(prog, callee->expr.ident);
-
-                    if (fn_sym == NULL) {
-                        fatal_error(callee->start_token, "call to undefined function '%.*s'",
-                                (int)callee->expr.ident.len, callee->expr.ident.s);
-                    }
-                    AstNode *fn = get_node(fn_sym->obj);
-
-                    if (fn->type != AST_FN) {
-                        fatal_error(callee->start_token, "call to something that is not a function");
-                    }
-                    if (ast_node_sibling_size(fn->fn.first_arg) !=
-                        ast_node_sibling_size(n->expr.call.first_arg)) {
-                        fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
-                                (int)callee->expr.ident.len, callee->expr.ident.s,
-                                ast_node_sibling_size(fn->fn.first_arg),
-                                ast_node_sibling_size(n->expr.call.first_arg));
-                    }
-                    // check each argument
-                    Vec *argdef = &get_type(fn_sym->type)->func.args;
-                    NodeIdx arg = n->expr.call.first_arg;
-
-                    for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
-                        TypeId expected_type = *(TypeId*)vec_get(argdef, i);
-                        TypeId passed_type = typecheck_expr(prog, scope, arg, expected_type);
-                        if (!is_type_eq(passed_type, expected_type)) {
-
-                            fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
-                                    i + 1,
-                                    (int)get_type(passed_type)->name.len,
-                                    get_type(passed_type)->name.s,
-                                    (int)get_type(expected_type)->name.len,
-                                    get_type(expected_type)->name.s);
-                        }
-                    }
-
-                    assert(get_type(fn->fn.type)->type == TT_FUNC);
-                    t = get_type(fn->fn.type)->func.ret;
-                } else {
-                    fatal_error(callee->start_token, "fn call by expression not implemented");
-                }
-            }
+            t = typecheck_call(prog, scope, expr);
             break;
         case EXPR_IF_ELSE:
             {

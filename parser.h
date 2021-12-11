@@ -115,6 +115,7 @@ typedef struct AstNode {
                 struct {
                     NodeIdx callee;
                     NodeIdx first_arg;
+                    bool is_indirect; /* Filled in by type checker */
                 } call;
 
                 struct {

@@ -1079,6 +1079,23 @@ static TypeId parse_type(TokenCursor *toks) {
         }
         chomp(toks, T_RSQBRACKET);
         return make_array_type(size->int_literal, contained);
+    } else if (t->type == T_FN) {
+        // a function type
+        chomp(toks, T_LPAREN);
+        Vec arg_types = vec_init(sizeof(TypeId));
+        while (tok_peek(toks, 0)->type != T_RPAREN) {
+            const TypeId arg = parse_type(toks);
+            vec_push(&arg_types, &arg);
+            if (tok_peek(toks, 0)->type != T_COMMA) {
+                break;
+            }
+            chomp(toks, T_COMMA);
+        }
+        chomp(toks, T_RPAREN);
+        chomp(toks, T_RARROW);
+        const TypeId ret = parse_type(toks);
+
+        return make_fn_type(&arg_types, ret);
     }
     else {
         parse_error("Expected variable name", T_IDENT, t);
@@ -1177,17 +1194,7 @@ static NodeIdx parse_function(TokenCursor *toks) {
     }
 
     // make a type for this function
-    TypeId type = add_type((Type) {
-        .name = { .s = "fn(..)", .len = 6 }, // XXX generate type name
-        .size = 0,
-        .stack_size = 0,
-        .stack_offset = 0,
-        .type = TT_FUNC,
-        .func = {
-            .args = arg_types,
-            .ret = ret
-        }
-    });
+    TypeId type = make_fn_type(&arg_types, ret);
 
     NodeIdx body = 0;
 
@@ -1523,7 +1530,7 @@ void print_ast(NodeIdx nidx, int depth) {
                     }
                     break;
                 case EXPR_CALL:
-                    printf("expr_call\n");
+                    printf("expr_call (%s)\n", node->expr.call.is_indirect ? "indirect" : "direct");
                     print_ast(node->expr.call.callee, depth+1);
                     _indent(depth+2);
                     printf("args\n");

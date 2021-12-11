@@ -60,5 +60,6 @@ Type *get_type(TypeId id);
 bool is_type_eq(TypeId a, TypeId b);
 TypeId make_ptr_type(TypeId ref);
 TypeId make_array_type(int num_elems, TypeId contained);
+TypeId make_fn_type(Vec/*<TypeId>*/ *args, TypeId ret);
 
 #endif /* TYPES_H */
