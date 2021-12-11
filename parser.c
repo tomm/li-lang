@@ -1092,8 +1092,11 @@ static TypeId parse_type(TokenCursor *toks) {
             chomp(toks, T_COMMA);
         }
         chomp(toks, T_RPAREN);
-        chomp(toks, T_RARROW);
-        const TypeId ret = parse_type(toks);
+        TypeId ret = VOID;
+        if (tok_peek(toks, 0)->type == T_RARROW) {
+            chomp(toks, T_RARROW);
+            ret = parse_type(toks);
+        }
 
         return make_fn_type(&arg_types, ret);
     }

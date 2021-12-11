@@ -1,6 +1,8 @@
 * many compile errors still need to be moved from backend to frontend
-* function pointers
 * structs
+* unions
+* allow `const myfnptr = myfn@` in global scope
+* const in local scope
 * compile-time constants (macro rLCDC { 0xff40 as &u8 })
 * unused number literal causes backend crash. ie `1;`
 * do while loop

@@ -1575,10 +1575,13 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
         // call by function pointer
         const int old_stack = frame.stack_offset;
         emit_call_push_args(0, n->expr.call.first_arg, &frame);
-        _i("ld hl, .l%d", return_label);
-        _i("push hl");
         // hl = function address 
         Value fn = emit_expression(n->expr.call.callee, frame);
+        assert(get_type(fn.typeId)->type == TT_FUNC && fn.storage == ST_REG_EA);
+        // since there is no computed CALL opcode in LR35902, we explicitly
+        // push the return address and jump to target
+        _i("ld de, .l%d", return_label);
+        _i("push de");
         _i("jp hl");
         _label(return_label);
         const int stack_correction = frame.stack_offset - old_stack;

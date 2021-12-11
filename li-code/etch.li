@@ -36,7 +36,7 @@ fn main() {
         if gamepad_pressed == 0x40 { etch_y -= 1 }
         if gamepad_pressed == 0x20 { etch_x -= 1 }
         if gamepad_pressed == 0x10 { etch_x += 1 }
-        if gamepad_pressed == 0x8 { start() }
+        if gamepad_pressed == 0x8 { start#() }
 
         clear_gamepad()
     }

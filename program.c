@@ -396,6 +396,18 @@ static void validate_return(const Token *t, TypeId expected, TypeId returned) {
     }
 }
 
+/**
+ * const/var with certain types is forbidden: never, fn(...), void
+ */
+static void check_valid_binding_type(AstNode *n, TypeId t)
+{
+    if (t == TYPE_UNKNOWN || t == VOID || get_type(t)->type == TT_FUNC) {
+        fatal_error(n->start_token, "'%.*s' is not a valid type for a var/const",
+                get_type(t)->name.len,
+                get_type(t)->name.s);
+    }
+}
+
 static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
 {
     AstNode *n = get_node(call);
@@ -405,15 +417,8 @@ static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
     TypeId fn_type = typecheck_expr(prog, scope, n->expr.call.callee, TYPE_UNKNOWN);
     bool is_indirect = false;
 
-    if (get_type(fn_type)->type == TT_PTR &&
-        get_type(get_type(fn_type)->ptr.ref)->type == TT_FUNC) {
-        // indirect function call
-        fn_type = get_type(fn_type)->ptr.ref;
-        is_indirect = true;
-    }
-
     // update AST with 'is_indirect', now we know
-    n->expr.call.is_indirect = is_indirect;
+    //n->expr.call.is_indirect = is_indirect;
 
     if (get_type(fn_type)->type == TT_FUNC) {
         if (get_type(fn_type)->func.args.len !=
@@ -450,7 +455,9 @@ static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
 
         return get_type(fn_type)->func.ret;
     } else {
-        fatal_error(callee->start_token, "fn call by expression not implemented");
+        fatal_error(callee->start_token, "type '%.*s' is not a function",
+                get_type(fn_type)->name.len,
+                get_type(fn_type)->name.s);
     }
 }
 
@@ -520,7 +527,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             break;
         case EXPR_IDENT:
             {
-                Variable *var = scope_lookup(scope, n->expr.ident);
+                Variable *var = NULL;
+                // could be expression in global scope (ie scope == NULL)
+                if (scope) {
+                    var = scope_lookup(scope, n->expr.ident);
+                }
                 if (var) {
                     t = var->type;
                 } else {
@@ -669,6 +680,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     n->expr.local_scope.value != 0) {
                     n->expr.local_scope.var_type = typecheck_expr(prog, scope, n->expr.local_scope.value, TYPE_UNKNOWN);
                 }
+                check_valid_binding_type(n, n->expr.local_scope.var_type);
 
                 if (scope_lookup(scope, n->expr.local_scope.var_name) != NULL) {
                     fatal_error(n->start_token, "Local variable called '%.*s' already defined",
@@ -680,6 +692,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     .type = n->expr.local_scope.var_type
                 });
                 t = typecheck_expr(prog, scope, n->expr.local_scope.scoped_expr, type_hint);
+
                 scope_pop(scope);
             }
             break;
@@ -772,6 +785,8 @@ static void typecheck_global(Program *prog, NodeIdx node) {
     AstNode *n = get_node(node);
     assert(n->type == AST_DEF_VAR);
 
+    if (n->var_def.type != TYPE_UNKNOWN) check_valid_binding_type(n, n->var_def.type);
+
     if (n->var_def.is_const == false && n->var_def.value == 0) return;
     assert(n->var_def.value != 0);
 
@@ -790,6 +805,12 @@ static void typecheck_global(Program *prog, NodeIdx node) {
                 (int)get_type(v)->name.len,
                 get_type(v)->name.s);
     }
+
+    if (get_type(v)->type == TT_FUNC) {
+        fatal_error(n->start_token, "no");
+    }
+
+    check_valid_binding_type(n, n->var_def.type);
 }
 
 /** deduces the eval_type of AST_EXPR nodes, and checks for type errors. */
