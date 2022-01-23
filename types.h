@@ -6,6 +6,12 @@
 
 typedef int TypeId;
 
+typedef struct StructMember {
+    Str name;
+    TypeId type;
+    int offset; // bytes
+} StructMember;
+
 typedef struct Type {
     Str name;
     int size;        /* size of type when packed */
@@ -24,10 +30,14 @@ typedef struct Type {
         TT_ARRAY,
         TT_FUNC,
         TT_PTR,
-        // TT_STRUCT
+        TT_STRUCT
     } type;
 
     union {
+        struct {
+            Vec /*<StructMember>*/ members;
+        } _struct;
+
         struct {
             TypeId contained;
         } array;
@@ -61,5 +71,6 @@ bool is_type_eq(TypeId a, TypeId b);
 TypeId make_ptr_type(TypeId ref);
 TypeId make_array_type(int num_elems, TypeId contained);
 TypeId make_fn_type(Vec/*<TypeId>*/ *args, TypeId ret);
+TypeId make_struct_type(Str name, Vec/*<StructMember>*/ *members);
 
 #endif /* TYPES_H */

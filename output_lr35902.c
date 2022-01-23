@@ -316,7 +316,8 @@ static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
             frame->stack_offset += 2;
             return;
         case TT_ARRAY:
-            /* Passing an array by value */
+        case TT_STRUCT:
+            /* Passing an array or struct by value */
             assert(v.storage == ST_REG_EA);
             _i("add sp,%d", -t->size);
             _i("ld d, h");
@@ -1658,13 +1659,7 @@ static Value emit_if_else(NodeIdx expr, StackFrame frame) {
         Value on_false = emit_expression(n->expr.if_else.on_false, frame);
         on_false = emit_value_to_register(on_false, false);
 
-        if (!is_type_eq(on_false.typeId, on_true.typeId)) {
-            fatal_error(n->start_token, "if-else expects both branches to evaluate to the same type. found %.*s and %.*s",
-                    (int)get_type(on_true.typeId)->name.len,
-                    get_type(on_true.typeId)->name.s,
-                    (int)get_type(on_false.typeId)->name.len,
-                    get_type(on_false.typeId)->name.s);
-        }
+        // assume on_true and on_false types matched (frontend checked this)
 
         _label(end_label);
         // the storage class must be the same
@@ -1708,7 +1703,7 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
         }
     }
 
-    fatal_error(n->start_token, "Variable '%.*s' is not defined", (int)n->expr.ident.len, n->expr.ident.s);
+    fatal_error(n->start_token, "Compiler bug. Undefined variable '%.*s' reached code generator", (int)n->expr.ident.len, n->expr.ident.s);
 }
 
 static Value emit_local_scope(NodeIdx scope, StackFrame frame) {

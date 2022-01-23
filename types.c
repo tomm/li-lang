@@ -1,6 +1,7 @@
 #include "types.h"
 #include "vec.h"
 #include "str.h"
+#include "base.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include <assert.h>
@@ -147,6 +148,24 @@ TypeId make_fn_type(Vec/*<TypeId>*/ *args, TypeId ret) {
     });
 }
 
+/* Takes ownership of *members */
+TypeId make_struct_type(Str name, Vec /*<StructMember>*/ *members) {
+    int size = 0;
+    for (int i=0; i<members->len; i++) {
+        StructMember *mem = (StructMember*)vec_get(members, i);
+        size = MAX(size, mem->offset + get_type(mem->type)->size);
+    }
+
+    return add_type((Type) {
+        .name = name,
+        .size = size,
+        .stack_size = 0,  // not pushable
+        .stack_offset = 0,
+        .type = TT_STRUCT,
+        ._struct = { .members = *members }
+    });
+}
+
 TypeId make_array_type(int num_elems, TypeId contained) {
     char buf[256];
     snprintf(buf, sizeof(buf), "[%.*s; %d]",
@@ -204,6 +223,22 @@ bool is_type_eq(TypeId a, TypeId b) {
                 }
             }
             return true;
+        case TT_STRUCT:
+            // nominal struct typing
+            return a == b;
+            /*
+            if (ta->_struct.members.len != tb->_struct.members.len) return false;
+            for (int i=0; i<ta->_struct.members.len; ++i) {
+                StructMember *ma = (StructMember*)vec_get(&ta->_struct.members, i);
+                StructMember *mb = (StructMember*)vec_get(&tb->_struct.members, i);
+                if (!Str_eq2(ma->name, mb->name) ||
+                    ma->offset != mb->offset &&
+                    !is_type_eq(ma->type, mb->type)) {
+                    return false;
+                }
+            }
+            return true;
+            */
     }
     assert(false);
 }
