@@ -55,6 +55,7 @@ typedef struct AstNode {
                 EXPR_LOOP,
                 EXPR_GOTO,
                 EXPR_RETURN,
+                EXPR_MEMBER_ACCESS,
                 EXPR_BUILTIN,
                 // temporary frontend state. not passed to middle/backend
                 EXPR_FE_OPERATOR,
@@ -111,6 +112,11 @@ typedef struct AstNode {
                 } list;
 
                 Str ident;
+
+                struct {
+                    NodeIdx struct_expr;
+                    Str member;
+                } member_access;
 
                 struct {
                     NodeIdx callee;

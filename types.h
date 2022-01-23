@@ -72,5 +72,7 @@ TypeId make_ptr_type(TypeId ref);
 TypeId make_array_type(int num_elems, TypeId contained);
 TypeId make_fn_type(Vec/*<TypeId>*/ *args, TypeId ret);
 TypeId make_struct_type(Str name, Vec/*<StructMember>*/ *members);
+/** returns NULL on failed lookup */
+const StructMember *lookup_struct_member(TypeId struct_type, Str member);
 
 #endif /* TYPES_H */

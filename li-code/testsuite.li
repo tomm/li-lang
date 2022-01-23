@@ -424,6 +424,7 @@ fn main() {
     expect(test_return(1) == 't')
     expect(test_return(0) == 'f')
     test_fn_ptrs()
+    test_structs()
 
     output_results()
 }
@@ -847,4 +848,48 @@ fn test_fn_ptrs() {
     expect(test_fn_ptr_counter == 2)
     global_fn_ptr#(3)
     expect(test_fn_ptr_counter == 5)
+}
+
+/* struct tests */
+struct Person {
+    name: [u8; 4]
+    age: u8
+}
+
+fn test_structs() {
+    var p: Person
+    p.name = "Tom"
+    p.age = 12
+
+    expect(p.age == 12)
+    _test_struct_pass_val(p)
+    expect(p.age == 12)
+    _test_struct_pass_ref(p@)
+    expect(p.age == 14)
+    {
+        var q = _test_struct_return(20)
+        expect(q.age == 20)
+        expect(q.name[0] == 'Z')
+        expect(q.name[1] == 'o')
+        expect(q.name[2] == 'e')
+        expect(q.name[3] == 0)
+    }
+}
+
+fn _test_struct_pass_val(p: Person) {
+    expect(p.name[0] == 'T')
+    expect(p.age == 12)
+}
+
+fn _test_struct_pass_ref(p: @Person) {
+    expect(p#.age == 12)
+    p#.age += 2
+    {}
+}
+
+fn _test_struct_return(age: u8) -> Person {
+    var p: Person
+    p.age = age
+    p.name = "Zoe"
+    p
 }

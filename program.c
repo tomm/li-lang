@@ -76,6 +76,7 @@ static const ValidOperator valid_operators[] = {
     { OPERATOR_UNARY_DEREF, OP_DEREF, TT_PTR, TT_PRIM_VOID, -1 /* any */ },
     { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PTR, TT_PTR, -1 },
     { OPERATOR_ASSIGN, OP_ASSIGN_SIZED, TT_ARRAY, TT_ARRAY, -1 },
+    { OPERATOR_ASSIGN, OP_ASSIGN_SIZED, TT_STRUCT, TT_STRUCT, -1 },
     { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_8, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
     { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_16, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
     { OPERATOR_ADD, OP_PTR_ADD, TT_PTR, TT_PRIM_U16, -1 },
@@ -486,6 +487,23 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             break;
         case EXPR_ASM:
             t = VOID;
+            break;
+        case EXPR_MEMBER_ACCESS:
+            {
+                TypeId struct_type = typecheck_expr(prog, scope, n->expr.member_access.struct_expr, type_hint);
+                if (get_type(struct_type)->type != TT_STRUCT) {
+                    fatal_error(n->start_token, "Member access on type that is not a struct or union");
+                }
+                const StructMember *mem = lookup_struct_member(struct_type, n->expr.member_access.member);
+                if (mem == NULL) {
+                    fatal_error(n->start_token, "Struct `%.*s` has no member `%.*s`",
+                            get_type(struct_type)->name.len,
+                            get_type(struct_type)->name.s,
+                            n->expr.member_access.member.len,
+                            n->expr.member_access.member.s);
+                }
+                t = mem->type;
+            }
             break;
         case EXPR_CAST:
             {

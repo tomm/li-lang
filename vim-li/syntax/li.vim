@@ -28,7 +28,7 @@ syntax keyword liStatement      return
 "syntax keyword liAssert         assert
 "syntax keyword liClassDecl      extends with implements
 syntax keyword liBranch         break continue nextgroup=liUserLabelRef skipwhite
-syntax keyword liKeyword        fn var asm include as const
+syntax keyword liKeyword        fn var asm include as const struct
 syntax match   liLabelUse       display "\'\%([^[:cntrl:][:space:][:punct:][:digit:]]\|_\)\%([^[:cntrl:][:punct:][:space:]]\|_\)*"
 syntax match   liLabelDecl      display "\'\%([^[:cntrl:][:space:][:punct:][:digit:]]\|_\)\%([^[:cntrl:][:punct:][:space:]]\|_\)*:"
 

@@ -431,6 +431,26 @@ static NodeIdx parse_postfix_expression(TokenCursor *toks) {
             });
         }
 
+        // struct member access
+        else if (start_token->type == T_PERIOD) {
+            chomp(toks, T_PERIOD);
+            NodeIdx struct_expr = n;
+            Str member_name = chomp(toks, T_IDENT)->ident;
+
+            n = alloc_node();
+            set_node(n, &(AstNode) {
+                .type = AST_EXPR,
+                .start_token = start_token,
+                .expr = {
+                    .type = EXPR_MEMBER_ACCESS,
+                    .member_access = {
+                        .struct_expr = struct_expr,
+                        .member = member_name
+                    }
+                }
+            });
+        }
+
         else if (start_token->type == T_HASH) {
             chomp(toks, T_HASH);
             NodeIdx arg1 = n;
@@ -1224,6 +1244,59 @@ static NodeIdx parse_function(TokenCursor *toks) {
     return fn;
 }
 
+static TypeId parse_struct_def(TokenCursor *toks) {
+    Vec members = vec_init(sizeof(StructMember));
+    int offset = 0;
+
+    Str struct_name = chomp(toks, T_IDENT)->ident;
+    chomp(toks, T_LBRACE);
+    while (tok_peek(toks, 0)->type != T_RBRACE) {
+        StructMember m;
+
+        const Token *member_name = chomp(toks, T_IDENT);
+
+        // check name is unique
+        for (int i=0; i<members.len; ++i) {
+            if (Str_eq2(
+                ((StructMember*)vec_get(&members, i))->name,
+                member_name->ident)) {
+                fatal_error(
+                    member_name,
+                    "Duplicate struct member `%.*s`",
+                    member_name->ident.len,
+                    member_name->ident.s);
+            }
+        }
+
+        chomp(toks, T_COLON);
+        m.name = member_name->ident;
+        m.type = parse_type(toks);
+        m.offset = offset;
+
+        offset += get_type(m.type)->size;
+
+        /*
+        printf("Got struct member %.*s type %.*s (offset %d)\n",
+                m.name.len,
+                m.name.s, 
+                get_type(m.type)->name.len,
+                get_type(m.type)->name.s,
+                m.offset);
+                */
+        vec_push(&members, &m);
+    }
+    /*
+    printf("Found %d members of struct %.*s (size %d)\n",
+            (int)members.len,
+            struct_name.len,
+            struct_name.s,
+            offset);
+            */
+    chomp(toks, T_RBRACE);
+
+    return make_struct_type(struct_name, &members);
+}
+
 static void collect_symbols(Program *prog) {
     AstNode *root_node = get_node(prog->root);
     assert(root_node->type == AST_MODULE);
@@ -1315,6 +1388,9 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
                     goto error;
                 }
                 break;
+            case T_STRUCT:
+                parse_struct_def(toks);
+                break;
             case T_EOF:
                 return;
             default:
@@ -1323,7 +1399,7 @@ static void parse_module_body(TokenCursor *toks, ChildCursor *children)
     }
 
 error:
-    parse_error("Expected function or end of file", T_FN, t);
+    fatal_error(t, "Unexpected token `%s`", token_type_cstr(t->type));
 }
 
 NodeIdx parse_module(TokenCursor *toks) {
@@ -1561,6 +1637,12 @@ void print_ast(NodeIdx nidx, int depth) {
                     break;
                 case EXPR_RETURN:
                     printf("return something\n");
+                    break;
+                case EXPR_MEMBER_ACCESS:
+                    printf("access struct member `%.*s`\n",
+                            node->expr.member_access.member.len,
+                            node->expr.member_access.member.s);
+                    print_ast(node->expr.member_access.struct_expr, depth+2);
                     break;
                 case EXPR_CAST:
                     {

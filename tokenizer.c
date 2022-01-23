@@ -52,8 +52,10 @@ const char *token_type_cstr(enum TokType type) {
         case T_PERCENT: return "%";
         case T_DOLLAR: return "$";
         case T_COMMA: return ",";
+        case T_PERIOD: return ".";
         case T_BREAK: return "break";
         case T_CONTINUE: return "continue";
+        case T_STRUCT: return "struct";
         case T_IDENT: return "identifier";
         case T_JUMP_LABEL: return "label";
         case T_LITERAL_STR: return "literal str";
@@ -197,6 +199,7 @@ Vec lex(Str buf, const char *filename) {
             EMIT(t);
         }
         else if (*pos == ',') { EMIT(((Token) { T_COMMA, line, col, filename })); NEXT(); }
+        else if (*pos == '.') { EMIT(((Token) { T_PERIOD, line, col, filename })); NEXT(); }
         // C++ comment
         else if ((*pos == '/') && LOOK_AHEAD() == '/') {
             NEXT(); NEXT();
@@ -257,6 +260,8 @@ Vec lex(Str buf, const char *filename) {
                 EMIT(((Token) { T_BREAK, t.line, t.col, filename }));
             } else if (Str_eq(t.ident, "continue")) {
                 EMIT(((Token) { T_CONTINUE, t.line, t.col, filename }));
+            } else if (Str_eq(t.ident, "struct")) {
+                EMIT(((Token) { T_STRUCT, t.line, t.col, filename }));
             } else {
                 EMIT(t);
             }

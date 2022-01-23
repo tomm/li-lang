@@ -281,6 +281,11 @@ static Value emit_value_to_register(Value v, bool to_aux_reg) {
         return v;
     }
 
+    else if (get_type(v.typeId)->type == TT_STRUCT) {
+        assert(v.storage == ST_REG_EA);
+        return v;
+    }
+
     assert(false);
 }
 
@@ -881,7 +886,8 @@ Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Node
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
-    assert(get_type(v2.typeId)->type == TT_ARRAY);
+    assert(get_type(v2.typeId)->type == TT_ARRAY ||
+           get_type(v2.typeId)->type == TT_STRUCT);
 
     // v2 (src) in `de`
     _i("ld d, h");
@@ -1824,6 +1830,18 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             return emit_local_scope(expr, frame);
         case EXPR_RETURN:
             return emit_return(n->expr.return_.val, frame);
+        case EXPR_MEMBER_ACCESS:
+            {
+                v = emit_expression(n->expr.member_access.struct_expr, frame);
+                assert(v.storage == ST_REG_EA);
+                const StructMember *member = lookup_struct_member(v.typeId, n->expr.member_access.member);
+                if (member->offset != 0) {
+                    _i("ld de, %d", member->offset);
+                    _i("add hl, de");
+                }
+                v = (Value) { .typeId = member->type, .storage = ST_REG_EA };
+            }
+            break;
         default:
             assert(false);
     }
@@ -1882,6 +1900,9 @@ static int get_max_local_vars_size(NodeIdx n)
         case EXPR_IDENT:
             break;
         case EXPR_LITERAL:
+            break;
+        case EXPR_MEMBER_ACCESS:
+            size = max(size, get_max_local_vars_size(node->expr.member_access.struct_expr));
             break;
         case EXPR_CALL:
             for (int c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {

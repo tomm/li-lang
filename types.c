@@ -187,6 +187,22 @@ TypeId make_array_type(int num_elems, TypeId contained) {
     });
 }
 
+const StructMember *lookup_struct_member(TypeId struct_type, Str member)
+{
+    Type *t = get_type(struct_type);
+    if (t->type != TT_STRUCT) {
+        return NULL;
+    }
+
+    Vec *members = &t->_struct.members;
+
+    for (int i=0; i<members->len; ++i) {
+        const StructMember *m = (StructMember*)vec_get(members, i);
+        if (Str_eq2(m->name, member)) return m;
+    }
+    return NULL;
+}
+
 /* XXX bad name. is really "does b fulfill requirements of a"
  */
 bool is_type_eq(TypeId a, TypeId b) {
