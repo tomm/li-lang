@@ -1570,60 +1570,34 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
 
-    if (true) {//n->expr.call.is_indirect) {
-        const int return_label = _local_label_seq++;
-        // call by function pointer
-        const int old_stack = frame.stack_offset;
-        emit_call_push_args(0, n->expr.call.first_arg, &frame);
+    const int return_label = _local_label_seq++;
+    // call by function pointer
+    const int old_stack = frame.stack_offset;
+    emit_call_push_args(0, n->expr.call.first_arg, &frame);
+
+    if (n->expr.call.is_indirect) {
         // hl = function address 
-        Value fn = emit_expression(n->expr.call.callee, frame);
-        assert(get_type(fn.typeId)->type == TT_FUNC && fn.storage == ST_REG_EA);
+        emit_expression(n->expr.call.callee, frame);
         // since there is no computed CALL opcode in LR35902, we explicitly
         // push the return address and jump to target
         _i("ld de, .l%d", return_label);
         _i("push de");
         _i("jp hl");
         _label(return_label);
-        const int stack_correction = frame.stack_offset - old_stack;
-        if (stack_correction) {
-            _i("add sp, %d", stack_correction);
-        }
-        frame.stack_offset += stack_correction;
-
-        if (n->expr.call.is_indirect) {
-            Type *fntype = get_type(fn.typeId);
-            Type *rettype = get_type(fntype->func.ret);
-            assert(fntype->type == TT_PTR && get_type(fntype->ptr.ref)->type == TT_FUNC);
-            return (Value) { .typeId = get_type(fntype->ptr.ref)->func.ret,
-                .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
-        } else {
-            Type *fntype = get_type(fn.typeId);
-            Type *rettype = get_type(fntype->func.ret);
-            assert(fntype->type == TT_FUNC);
-            return (Value) { .typeId = fntype->func.ret, .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
-        }
     } else {
-        assert (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT);
-        const AstNode *fn = lookup_global_sym(callee->expr.ident);
-
-        // actualy compile error emitted by program.c
-        assert(fn != NULL);
-        assert(fn->type == AST_FN);
-
-        const int old_stack = frame.stack_offset;
-        emit_call_push_args(0, n->expr.call.first_arg, &frame);
+        assert(callee->expr.type == EXPR_IDENT);
         _i("call %.*s", (int)callee->expr.ident.len, callee->expr.ident.s);
-        const int stack_correction = frame.stack_offset - old_stack;
-        if (stack_correction) {
-            _i("add sp, %d", stack_correction);
-        }
-        frame.stack_offset += stack_correction;
-
-        Type *fntype = get_type(fn->fn.type);
-        Type *rettype = get_type(fntype->func.ret);
-        assert(fntype->type == TT_FUNC);
-        return (Value) { .typeId = fntype->func.ret, .storage = rettype->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
     }
+    const int stack_correction = frame.stack_offset - old_stack;
+    if (stack_correction) {
+        _i("add sp, %d", stack_correction);
+    }
+    frame.stack_offset += stack_correction;
+
+    assert(get_type(callee->expr.eval_type)->type == TT_FUNC);
+    TypeId ret = get_type(callee->expr.eval_type)->func.ret;
+
+    return (Value) { .typeId = ret, .storage = get_type(ret)->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
 }
 
 static Value emit_loop(NodeIdx expr, StackFrame frame) {

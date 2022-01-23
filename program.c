@@ -415,10 +415,13 @@ static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
     // is it a built-in op?
     AstNode *callee = get_node(n->expr.call.callee);
     TypeId fn_type = typecheck_expr(prog, scope, n->expr.call.callee, TYPE_UNKNOWN);
-    bool is_indirect = false;
+
+    // can assume a function call is static if the function name is just an identifier
+    // (since for function pointers li requires at least a dereferencing operator as well)
+    bool is_indirect = callee->expr.type != EXPR_IDENT;
 
     // update AST with 'is_indirect', now we know
-    //n->expr.call.is_indirect = is_indirect;
+    n->expr.call.is_indirect = is_indirect;
 
     if (get_type(fn_type)->type == TT_FUNC) {
         if (get_type(fn_type)->func.args.len !=
