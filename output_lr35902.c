@@ -92,6 +92,23 @@ static void emit_boilerplate() {
     __("        jr nz, __memcpy");
     __("        ret");
 
+    __("__memcmp:");
+    __("        ; fn (hl: dest, de: src, bc: length) -> bool (0 or 1)");
+    __("        ld a, b");
+    __("        or c");
+    __("        jr z, .eq");
+    __("        ld a, [de]");
+    __("        cp [hl]");
+    __("        jr nz, .neq");
+    __("        inc de");
+    __("        inc hl");
+    __("        dec bc");
+    __("        jr __memcmp");
+    __("  .eq:  ld a, 1");
+    __("        ret");
+    __("  .neq: xor a");
+    __("        ret");
+
     __("__memset:");
     __("        ; fn (hl: dest, de: length, a: value)");
     __("        ld b, a");
@@ -902,6 +919,25 @@ Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Node
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
 }
 
+Value emit_eq_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
+    AstNode *n = get_node(expr);
+    Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
+    emit_push_temporary(n->expr.builtin.arg1, v1, frame);
+    Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
+    assert(get_type(v2.typeId)->type == TT_ARRAY ||
+           get_type(v2.typeId)->type == TT_STRUCT);
+
+    // v2 (src) in `de`
+    _i("ld d, h");
+    _i("ld e, l");
+    v1 = emit_pop_temporary(v1, frame, false); // v1 (dest) in `hl`
+
+    _i("ld bc, %d", get_type(v1.typeId)->size);
+    _i("call __memcmp");
+
+    return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
+}
+
 Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
     AstNode *n = get_node(expr);
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
@@ -1413,6 +1449,13 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
             break;
         case OP_ASSIGN_SIZED: /* structs, arrays, etc */
             result = emit_assign_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            break;
+        case OP_NEQ_SIZED: /* structs, arrays, etc */
+            result = emit_eq_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            _i("xor a, 1"); // not
+            break;
+        case OP_EQ_SIZED: /* structs, arrays, etc */
+            result = emit_eq_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ARRAY_INDEX_8:
             result = emit_array_indexing_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);

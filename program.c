@@ -77,6 +77,10 @@ static const ValidOperator valid_operators[] = {
     { OPERATOR_ASSIGN, OP_ASSIGN_16, TT_PTR, TT_PTR, -1 },
     { OPERATOR_ASSIGN, OP_ASSIGN_SIZED, TT_ARRAY, TT_ARRAY, -1 },
     { OPERATOR_ASSIGN, OP_ASSIGN_SIZED, TT_STRUCT, TT_STRUCT, -1 },
+    { OPERATOR_EQ, OP_EQ_SIZED, TT_ARRAY, TT_ARRAY, BOOL },
+    { OPERATOR_EQ, OP_EQ_SIZED, TT_STRUCT, TT_STRUCT, BOOL },
+    { OPERATOR_NEQ, OP_NEQ_SIZED, TT_ARRAY, TT_ARRAY, BOOL },
+    { OPERATOR_NEQ, OP_NEQ_SIZED, TT_STRUCT, TT_STRUCT, BOOL },
     { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_8, TT_ARRAY, TT_PRIM_U8, -1 /* any */ },
     { OPERATOR_ARRAY_INDEXING, OP_ARRAY_INDEX_16, TT_ARRAY, TT_PRIM_U16, -1 /* any */ },
     { OPERATOR_ADD, OP_PTR_ADD, TT_PTR, TT_PRIM_U16, -1 },
@@ -330,6 +334,8 @@ static TypeId typecheck_operator(Program *prog, Scope *scope, NodeIdx expr, Type
                     case OPERATOR_SUB:
                         if (tt1 == TT_PTR) return t1;
                         else assert(false);
+                    case OPERATOR_EQ:
+                    case OPERATOR_NEQ:
                     case OPERATOR_ASSIGN:
                         if (!is_type_eq(t1, t2)) {
                             goto error;

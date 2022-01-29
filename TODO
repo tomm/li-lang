@@ -1,7 +1,8 @@
 * should check for invalid assignment to temporaries in frontend - but only
   backend knows about temporaryness...
 * many compile errors still need to be moved from backend to frontend
-* structs
+* struct literals
+* inline nested structs
 * unions
 * allow `const myfnptr = myfn@` in global scope
 * const in local scope

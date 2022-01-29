@@ -67,6 +67,8 @@ enum BuiltinOp {
     OP_XOR_ASSIGN_8,
     OP_XOR_ASSIGN_16,
     // comparisons
+    OP_EQ_SIZED, /* structs, arrays, etc */
+    OP_NEQ_SIZED, /* structs, arrays, etc */
     OP_EQ_8,
     OP_EQ_16,
     OP_NEQ_8,

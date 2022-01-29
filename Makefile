@@ -32,3 +32,8 @@ examples:
 	rgbasm out.asm -o etch.o
 	rgblink -t -o etch.gb etch.o
 	rgbfix -v -p 0 etch.gb
+	
+	./lic li-code/test.li
+	rgbasm out.asm -o test.o
+	rgblink -t -o test.gb test.o
+	rgbfix -v -p 0 test.gb
