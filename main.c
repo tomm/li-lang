@@ -10,19 +10,28 @@
 #include "tokenizer.h"
 #include "program.h"
 #include "output_lr35902.h"
+#include "output_llvm.h"
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: ./lic [--noemit] <input.li>\n");
+        fprintf(stderr, "Usage: ./lic [--noemit] [--llvm] <input.li>\n");
     } else {
-        bool noemit = strcmp("--noemit", argv[1]) == 0;
+        bool noemit = false;
+        bool llvm = false;
+        int argpos = 1;
+
+        for (; argpos < argc-1; argpos++) {
+            if (strcmp("--noemit", argv[argpos]) == 0) noemit = true;
+            else if (strcmp("--llvm", argv[argpos]) == 0) llvm = true;
+            else break;
+        }
 
         Program prog = new_program();
         init_parser();
 
         // produce AST with typed globals and functions,
         // but 'unknown' type expressions in function bodies
-        parse_file(&prog, argv[noemit ? 2 : 1]);
+        parse_file(&prog, argv[argpos]);
 
         //print_ast(prog.root, 0);
         // typecheck function bodies
@@ -30,7 +39,8 @@ int main(int argc, char** argv) {
         //print_ast(prog.root, 0);
         
         if (!noemit) {
-            output_lr35902(&prog);
+            if (llvm) output_llvm(&prog);
+            else output_lr35902(&prog);
         }
     }
 }

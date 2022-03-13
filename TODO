@@ -24,3 +24,6 @@ missing operators:
   ++, -- (but maybe not)
   sizeof
   lenof
+
+clang -S -emit-llvm test.c
+clang -o test test.ll
