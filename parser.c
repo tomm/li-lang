@@ -3,8 +3,9 @@
 #include "tokenizer.h"
 #include "error.h"
 #include "program.h"
+#include "slaballoc.h"
 
-static Vec _node_alloc;
+static struct SlabAlloc *_node_alloc;
 
 const char* operator_name(enum OperatorOp op) {
     switch (op) {
@@ -112,18 +113,16 @@ static const Token *tok_next(TokenCursor *cursor) {
 }
 
 void init_parser() {
-    _node_alloc = vec_init(sizeof(AstNode));
+    _node_alloc = slab_allocator_new(sizeof(AstNode), 0);
     // XXX never freed
 
     init_types();
 }
 
 static NodeIdx alloc_node() {
-    AstNode n;
-    memset(&n, 0, sizeof(AstNode));
-    NodeIdx idx = _node_alloc.len;
-    vec_push(&_node_alloc, &n);
-    return idx;
+    AstNode *n = slab_alloc_item(_node_alloc);
+    memset(n, 0, sizeof(AstNode));
+    return n;
 }
 
 static void parse_error(const char *msg, enum TokType expected, const Token *got) __attribute__((noreturn));
@@ -132,8 +131,8 @@ static void parse_error(const char *msg, enum TokType expected, const Token *got
     fatal_error(got, "%s: expected %s but found %s", msg, token_type_cstr(expected), token_type_cstr(got->type));
 }
 
-AstNode *get_node(NodeIdx idx) { return vec_get(&_node_alloc, idx); }
-static void set_node(NodeIdx idx, AstNode *n) { vec_set(&_node_alloc, idx, n); }
+AstNode *get_node(NodeIdx idx) { return idx; }
+static void set_node(NodeIdx idx, AstNode *n) { *idx = *n; }
 
 /* child node linked list logic */
 typedef struct ChildCursor {
@@ -1518,13 +1517,13 @@ void print_ast(NodeIdx nidx, int depth) {
             break;
         case AST_EXPR:
             _indent(depth+1);
-            printf("(expr node %d: %.*s) ",
+            printf("(expr node %p: %.*s) ",
                     nidx,
                     (int)get_type(node->expr.eval_type)->name.len,
                     get_type(node->expr.eval_type)->name.s);
             switch (node->expr.type) {
                 case EXPR_GOTO:
-                    printf("%s (goto node %d)\n", node->expr.goto_.is_continue ? "continue" : "break", node->expr.goto_.target);
+                    printf("%s (goto node %p)\n", node->expr.goto_.is_continue ? "continue" : "break", node->expr.goto_.target);
                     break;
                 case EXPR_ASM:
                     printf("inline asm\n");

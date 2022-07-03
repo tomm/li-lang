@@ -7,12 +7,12 @@
 
 typedef struct Symbol {
     Str name;
-    NodeIdx obj;
+    AstNode *obj;
     TypeId type;
 } Symbol;
 
 typedef struct Program {
-    NodeIdx root;
+    AstNode *root;
 
     Vec /*<Symbol>*/ symbols;
 } Program;

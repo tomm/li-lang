@@ -6,7 +6,7 @@
 #include "types.h"
 #include "builtin.h"
 
-typedef int NodeIdx;
+typedef struct AstNode *NodeIdx;
 typedef struct Token Token;
 typedef struct Program Program;
 

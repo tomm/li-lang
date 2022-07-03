@@ -1854,7 +1854,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                             .is_const = true,
                             .value = expr
                         });
-                        _i("ld hl, __L%d", expr);
+                        _i("ld hl, __L%lld", (void*)expr);
                     }
                     v = (Value) { .typeId = n->expr.eval_type, .storage = ST_REG_EA };
                     break;
@@ -1936,7 +1936,7 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.if_else.on_false));
             break;
         case EXPR_LIST:
-            for (int c=node->expr.list.first_child; c!=0; c=get_node(c)->next_sibling) {
+            for (NodeIdx c=node->expr.list.first_child; c!=0; c=get_node(c)->next_sibling) {
                 size = max(size, get_max_local_vars_size(c));
             }
             break;
@@ -1948,7 +1948,7 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.member_access.struct_expr));
             break;
         case EXPR_CALL:
-            for (int c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {
+            for (NodeIdx c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {
                 size = max(size, get_max_local_vars_size(c));
             }
             break;
@@ -2056,7 +2056,7 @@ static void _emit_const(NodeIdx node) {
                     n->expr.literal.literal_str.s);
             break;
         case LIT_ARRAY:
-            for (int child=n->expr.literal.literal_array_first_val; child!=0; child=get_node(child)->next_sibling) {
+            for (NodeIdx child=n->expr.literal.literal_array_first_val; child!=0; child=get_node(child)->next_sibling) {
                 _emit_const(child);
             }
             break;
@@ -2072,7 +2072,7 @@ static void emit_rom_globals() {
             if (v.symbol_name.s) {
                 __("%.*s:", v.symbol_name.len, v.symbol_name.s);
             } else {
-                __("__L%d:", v.value /* is NodeIdx */);
+                __("__L%lld:", (void*)v.value /* is NodeIdx */);
             }
             _emit_const(v.value);
         }
