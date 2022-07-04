@@ -832,8 +832,60 @@ static void typecheck_global(Program *prog, AstNode *n) {
     check_valid_binding_type(n, n->var_def.type);
 }
 
+static void collect_symbols(Program *prog) {
+    AstNode *root_node = prog->root;
+    assert(root_node->type == AST_MODULE);
+
+    for (AstNode *n=root_node->module.first_child; n != 0; n=n->next_sibling) {
+        if (n->type == AST_FN) {
+            if (lookup_program_symbol(prog, n->fn.name) != NULL) {
+                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
+                        n->fn.name.len, n->fn.name.s);
+            }
+            vec_push(&prog->symbols, &(Symbol) {
+                .name = n->fn.name,
+                .obj = n,
+                .type = n->fn.type
+            });
+        }
+        else if (n->type == AST_DEF_VAR) {
+            if (lookup_program_symbol(prog, n->var_def.name) != NULL) {
+                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
+                        n->var_def.name.len, n->var_def.name.s);
+            }
+            vec_push(&prog->symbols, &(Symbol) {
+                .name = n->var_def.name,
+                .obj = n,
+                .type = n->var_def.type
+            });
+        }
+        else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
+            // fine
+        } else {
+            assert(false);
+        }
+    }
+}
+
+static Program *new_program() {
+    Program *prog = (Program*)malloc(sizeof(Program));
+
+    *prog = (Program) {
+        .root = 0,
+        .symbols = vec_init(sizeof(Symbol))
+    };
+
+    return prog;
+}
+
 /** deduces the eval_type of AST_EXPR nodes, and checks for type errors. */
-void typecheck_program(Program *prog) {
+Program *ast_to_program(AstNode *root) {
+    Program *prog = new_program();
+
+    prog->root = root;
+    
+    collect_symbols(prog);
+
     for (AstNode *node=prog->root->module.first_child; node != 0; node=node->next_sibling) {
         if (node->type == AST_FN) {
             typecheck_fn(prog, node);
@@ -842,20 +894,6 @@ void typecheck_program(Program *prog) {
             typecheck_global(prog, node);
         }
     }
-}
-
-Program new_program() {
-    Program prog = {
-        .root = 0,
-        .symbols = vec_init(sizeof(Symbol))
-    };
-
-    //collect_symbols(&prog);
-    //typecheck_program(&prog);
 
     return prog;
-}
-
-void free_program(Program *prog) {
-    vec_free(&prog->symbols);
 }

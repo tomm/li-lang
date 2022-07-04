@@ -1292,41 +1292,6 @@ static TypeId parse_struct_def(TokenCursor *toks) {
     return make_struct_type(struct_name, &members);
 }
 
-static void collect_symbols(Program *prog) {
-    AstNode *root_node = prog->root;
-    assert(root_node->type == AST_MODULE);
-
-    for (AstNode *n=root_node->module.first_child; n != 0; n=n->next_sibling) {
-        if (n->type == AST_FN) {
-            if (lookup_program_symbol(prog, n->fn.name) != NULL) {
-                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
-                        n->fn.name.len, n->fn.name.s);
-            }
-            vec_push(&prog->symbols, &(Symbol) {
-                .name = n->fn.name,
-                .obj = n,
-                .type = n->fn.type
-            });
-        }
-        else if (n->type == AST_DEF_VAR) {
-            if (lookup_program_symbol(prog, n->var_def.name) != NULL) {
-                fatal_error(n->start_token, "Duplicate definition of symbol %.*s",
-                        n->var_def.name.len, n->var_def.name.s);
-            }
-            vec_push(&prog->symbols, &(Symbol) {
-                .name = n->var_def.name,
-                .obj = n,
-                .type = n->var_def.type
-            });
-        }
-        else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
-            // fine
-        } else {
-            assert(false);
-        }
-    }
-}
-
 static void parse_module_body(TokenCursor *toks, ChildCursor *children);
 /*
  * Insert the AST of this file into module_children.
@@ -1423,7 +1388,7 @@ void dump_tokens(Vec *tokens) {
     printf("\n");
 }
 
-void parse_file(Program *prog, const char *filename) {
+AstNode *parse_file(const char *filename) {
     //printf("opening %s\n", filename);
     FILE *f = fopen(filename, "r");
     if (f == NULL) {
@@ -1438,8 +1403,7 @@ void parse_file(Program *prog, const char *filename) {
     //dump_tokens(&token_vec);
 
     TokenCursor toks = { .tokens = token_vec, .next = 0 };
-    prog->root = parse_module(&toks);
-    collect_symbols(prog);
+    return parse_module(&toks);
 
     /*
     printf("%d KiB of input code\n", buf.len/1024);

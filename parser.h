@@ -1,5 +1,5 @@
-#ifndef __PARSER_H
-#define __PARSER_H
+#ifndef PARSER_H
+#define PARSER_H
 
 #include "vec.h"
 #include "str.h"
@@ -8,7 +8,44 @@
 
 typedef struct AstNode AstNode;
 typedef struct Token Token;
-typedef struct Program Program;
+
+enum OperatorOp {
+    OPERATOR_ADD,
+    OPERATOR_SUB,
+    OPERATOR_BITAND,
+    OPERATOR_BITOR,
+    OPERATOR_BITXOR,
+    OPERATOR_LOGICAL_AND,
+    OPERATOR_LOGICAL_OR,
+    OPERATOR_UNARY_LOGICAL_NOT,
+    OPERATOR_MUL,
+    OPERATOR_DIV,
+    OPERATOR_MODULO,
+    OPERATOR_ASSIGN,
+    OPERATOR_PLUSASSIGN,
+    OPERATOR_MINUSASSIGN,
+    OPERATOR_MULASSIGN,
+    OPERATOR_DIVASSIGN,
+    OPERATOR_MODASSIGN,
+    OPERATOR_LSHIFTASSIGN,
+    OPERATOR_RSHIFTASSIGN,
+    OPERATOR_BITANDASSIGN,
+    OPERATOR_BITORASSIGN,
+    OPERATOR_BITXORASSIGN,
+    OPERATOR_EQ,
+    OPERATOR_NEQ,
+    OPERATOR_LT,
+    OPERATOR_GT,
+    OPERATOR_LTE,
+    OPERATOR_GTE,
+    OPERATOR_SHIFT_LEFT,
+    OPERATOR_SHIFT_RIGHT,
+    OPERATOR_ARRAY_INDEXING,
+    OPERATOR_UNARY_NEG,
+    OPERATOR_UNARY_ADDRESSOF,
+    OPERATOR_UNARY_DEREF,
+    OPERATOR_UNARY_BITNOT,
+};
 
 typedef struct AstNode {
     enum AstType {
@@ -133,43 +170,7 @@ typedef struct AstNode {
                 struct {
                     AstNode *arg1;
                     AstNode *arg2;
-                    enum OperatorOp {
-                        OPERATOR_ADD,
-                        OPERATOR_SUB,
-                        OPERATOR_BITAND,
-                        OPERATOR_BITOR,
-                        OPERATOR_BITXOR,
-                        OPERATOR_LOGICAL_AND,
-                        OPERATOR_LOGICAL_OR,
-                        OPERATOR_UNARY_LOGICAL_NOT,
-                        OPERATOR_MUL,
-                        OPERATOR_DIV,
-                        OPERATOR_MODULO,
-                        OPERATOR_ASSIGN,
-                        OPERATOR_PLUSASSIGN,
-                        OPERATOR_MINUSASSIGN,
-                        OPERATOR_MULASSIGN,
-                        OPERATOR_DIVASSIGN,
-                        OPERATOR_MODASSIGN,
-                        OPERATOR_LSHIFTASSIGN,
-                        OPERATOR_RSHIFTASSIGN,
-                        OPERATOR_BITANDASSIGN,
-                        OPERATOR_BITORASSIGN,
-                        OPERATOR_BITXORASSIGN,
-                        OPERATOR_EQ,
-                        OPERATOR_NEQ,
-                        OPERATOR_LT,
-                        OPERATOR_GT,
-                        OPERATOR_LTE,
-                        OPERATOR_GTE,
-                        OPERATOR_SHIFT_LEFT,
-                        OPERATOR_SHIFT_RIGHT,
-                        OPERATOR_ARRAY_INDEXING,
-                        OPERATOR_UNARY_NEG,
-                        OPERATOR_UNARY_ADDRESSOF,
-                        OPERATOR_UNARY_DEREF,
-                        OPERATOR_UNARY_BITNOT,
-                    } op;
+                    enum OperatorOp op;
                 } fe_operator;
 
                 struct {
@@ -193,9 +194,10 @@ typedef struct TokenCursor {
 
 extern void init_parser();
 extern const char* operator_name(enum OperatorOp op);
-extern void parse_file(Program *prog, const char *filename);
+/* Returns root AstNode */
+extern AstNode *parse_file(const char *filename);
 extern void print_ast(AstNode *node, int depth);
 // includes self
 extern int ast_node_sibling_size(AstNode *n);
 
-#endif /* __PARSER_H */
+#endif /* PARSER_H */

@@ -17,9 +17,7 @@ typedef struct Program {
     Vec /*<Symbol>*/ symbols;
 } Program;
 
-extern Program new_program();
-extern void free_program(Program *);
-extern void typecheck_program(Program *);
+extern Program *ast_to_program(AstNode *root);
 extern Symbol *lookup_program_symbol(Program *, Str name);
 
 #endif /* PROGRAM_H */

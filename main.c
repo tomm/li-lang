@@ -26,21 +26,19 @@ int main(int argc, char** argv) {
             else break;
         }
 
-        Program prog = new_program();
         init_parser();
 
         // produce AST with typed globals and functions,
         // but 'unknown' type expressions in function bodies
-        parse_file(&prog, argv[argpos]);
+        AstNode *ast_root = parse_file(argv[argpos]);
+        print_ast(ast_root, 0);
 
-        //print_ast(prog.root, 0);
-        // typecheck function bodies
-        typecheck_program(&prog);
-        //print_ast(prog.root, 0);
+        Program *prog = ast_to_program(ast_root);
+        print_ast(prog->root, 0);
         
         if (!noemit) {
-            if (llvm) output_llvm(&prog);
-            else output_lr35902(&prog);
+            if (llvm) output_llvm(prog);
+            else output_lr35902(prog);
         }
     }
 }
