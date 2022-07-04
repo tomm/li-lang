@@ -18,7 +18,7 @@ typedef struct Variable {
 
 typedef struct JumpLabel {
     Str label;
-    NodeIdx node;
+    AstNode *node;
 } JumpLabel;
 
 typedef struct Scope {
@@ -60,7 +60,7 @@ static JumpLabel *label_lookup(Scope *scope, Str *name) {
     return NULL;
 }
 
-static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint);
+static TypeId typecheck_expr(Program *prog, Scope *scope, AstNode *expr, TypeId type_hint);
 
 typedef struct ValidOperator {
     enum OperatorOp operator;
@@ -218,12 +218,11 @@ static const ValidOperator valid_operators[] = {
     { -1 }
 };
 
-static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
-    AstNode *n = get_node(expr);
+static bool try_fold_unary_neg(Program *prog, Scope *scope, AstNode *n, TypeId type_hint) {
     enum OperatorOp op = n->expr.fe_operator.op;
     assert(op == OPERATOR_UNARY_NEG);
 
-    AstNode *a = get_node(n->expr.fe_operator.arg1);
+    AstNode *a = n->expr.fe_operator.arg1;
     if (a->expr.type == EXPR_LITERAL &&
         (a->expr.literal.type == LIT_INT_ANY ||
          a->expr.literal.type == LIT_U8 ||
@@ -231,11 +230,11 @@ static bool try_fold_unary_neg(Program *prog, Scope *scope, NodeIdx expr, TypeId
          a->expr.literal.type == LIT_I16 ||
          a->expr.literal.type == LIT_U16)) {
         // turn OPERATOR_UNARY_NEG node into the literal node directly
-        NodeIdx next_sibling = n->next_sibling;
+        AstNode *next_sibling = n->next_sibling;
         *n = *a;
         n->next_sibling = next_sibling;
         n->expr.literal.literal_int = -n->expr.literal.literal_int;
-        typecheck_expr(prog, scope, expr, type_hint);
+        typecheck_expr(prog, scope, n, type_hint);
         return true;
     } else {
         return false;
@@ -264,19 +263,18 @@ static TypeId int_typekind_to_typeid(enum TypeType typekind) {
 }
 
 /* Transforms the untyped operator into a specific builtin op */
-static TypeId typecheck_operator(Program *prog, Scope *scope, NodeIdx expr, TypeId expr_type_hint) {
-    AstNode *n = get_node(expr);
+static TypeId typecheck_operator(Program *prog, Scope *scope, AstNode *n, TypeId expr_type_hint) {
     enum OperatorOp op = n->expr.fe_operator.op;
 
     const int num_args = n->expr.fe_operator.arg2 == 0 ? 1 : 2;
 
-    const NodeIdx arg1 = n->expr.fe_operator.arg1;
-    const NodeIdx arg2 = n->expr.fe_operator.arg2;
+    AstNode *arg1 = n->expr.fe_operator.arg1;
+    AstNode *arg2 = n->expr.fe_operator.arg2;
 
     /* Mandatory optimization... fold unary negative operator on constants -- needed for globals */
     if (op == OPERATOR_UNARY_NEG) {
-        if (try_fold_unary_neg(prog, scope, expr, expr_type_hint)) {
-            return get_node(expr)->expr.eval_type;
+        if (try_fold_unary_neg(prog, scope, n, expr_type_hint)) {
+            return n->expr.eval_type;
         }
     }
 
@@ -415,46 +413,45 @@ static void check_valid_binding_type(AstNode *n, TypeId t)
     }
 }
 
-static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
+static TypeId typecheck_call(Program *prog, Scope *scope, AstNode *call)
 {
-    AstNode *n = get_node(call);
-    assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
+    assert(call->type == AST_EXPR && call->expr.type == EXPR_CALL);
     // is it a built-in op?
-    AstNode *callee = get_node(n->expr.call.callee);
-    TypeId fn_type = typecheck_expr(prog, scope, n->expr.call.callee, TYPE_UNKNOWN);
+    AstNode *callee = call->expr.call.callee;
+    TypeId fn_type = typecheck_expr(prog, scope, call->expr.call.callee, TYPE_UNKNOWN);
 
     // can assume a function call is static if the function name is just an identifier
     // (since for function pointers li requires at least a dereferencing operator as well)
     bool is_indirect = callee->expr.type != EXPR_IDENT;
 
     // update AST with 'is_indirect', now we know
-    n->expr.call.is_indirect = is_indirect;
+    call->expr.call.is_indirect = is_indirect;
 
     if (get_type(fn_type)->type == TT_FUNC) {
         if (get_type(fn_type)->func.args.len !=
-            ast_node_sibling_size(n->expr.call.first_arg)) {
+            ast_node_sibling_size(call->expr.call.first_arg)) {
             if (is_indirect) {
                 fatal_error(callee->start_token, "function expected %d arguments but %d given",
                         (int)get_type(fn_type)->func.args.len,
-                        ast_node_sibling_size(n->expr.call.first_arg));
+                        ast_node_sibling_size(call->expr.call.first_arg));
             } else {
                 fatal_error(callee->start_token, "function '%.*s' expected %d arguments but %d given",
                         (int)callee->expr.ident.len, callee->expr.ident.s,
                         (int)get_type(fn_type)->func.args.len,
-                        ast_node_sibling_size(n->expr.call.first_arg));
+                        ast_node_sibling_size(call->expr.call.first_arg));
             }
         }
 
         // check each argument
         Vec *argdef = &get_type(fn_type)->func.args;
-        NodeIdx arg = n->expr.call.first_arg;
+        AstNode *arg = call->expr.call.first_arg;
 
-        for (int i=0; i<argdef->len; ++i, arg = get_node(arg)->next_sibling) {
+        for (int i=0; i<argdef->len; ++i, arg = arg->next_sibling) {
             TypeId expected_type = *(TypeId*)vec_get(argdef, i);
             TypeId passed_type = typecheck_expr(prog, scope, arg, expected_type);
             if (!is_type_eq(passed_type, expected_type)) {
 
-                fatal_error(get_node(arg)->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
+                fatal_error(arg->start_token, "error passing argument %d: type %.*s does not match expected type %.*s",
                         i + 1,
                         (int)get_type(passed_type)->name.len,
                         get_type(passed_type)->name.s,
@@ -473,8 +470,7 @@ static TypeId typecheck_call(Program *prog, Scope *scope, NodeIdx call)
 
 // XXX also resolves gotos. why do we do both? because AST isn't simple
 // to traverse...
-static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId type_hint) {
-    AstNode *n = get_node(expr);
+static TypeId typecheck_expr(Program *prog, Scope *scope, AstNode *n, TypeId type_hint) {
     TypeId t = TYPE_UNKNOWN;
     switch (n->expr.type) {
         case EXPR_GOTO:
@@ -546,8 +542,8 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
         case EXPR_LIST:
             {
                 t = VOID;
-                for (NodeIdx e=n->expr.list.first_child; e != 0; e=get_node(e)->next_sibling) {
-                    bool is_last = get_node(e)->next_sibling == 0;
+                for (AstNode *e=n->expr.list.first_child; e != 0; e=e->next_sibling) {
+                    bool is_last = e->next_sibling == 0;
                     t = typecheck_expr(prog, scope, e, is_last ? type_hint : TYPE_UNKNOWN);
                 }
             }
@@ -620,7 +616,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                     break;
                 case LIT_ARRAY:
                     {
-                        NodeIdx item = n->expr.literal.literal_array_first_val;
+                        AstNode *item = n->expr.literal.literal_array_first_val;
                         if (item == 0) {
                             fatal_error(n->start_token, "Zero length array literal not permitted");
                         }
@@ -628,11 +624,11 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                             get_type(type_hint)->array.contained : TT_UNKNOWN;
                         t = typecheck_expr(prog, scope, item, item_type_hint);
                         int len = 1;
-                        while (get_node(item)->next_sibling != 0) {
+                        while (item->next_sibling != 0) {
                             len++;
-                            item = get_node(item)->next_sibling;
+                            item = item->next_sibling;
                             if (!is_type_eq(t, typecheck_expr(prog, scope, item, item_type_hint))) {
-                                fatal_error(get_node(item)->start_token, "Unmatched array item type");
+                                fatal_error(item->start_token, "Unmatched array item type");
                             }
                         }
                         t = make_array_type(len, t);
@@ -641,7 +637,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             }
             break;
         case EXPR_CALL:
-            t = typecheck_call(prog, scope, expr);
+            t = typecheck_call(prog, scope, n);
             break;
         case EXPR_IF_ELSE:
             {
@@ -683,7 +679,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
                 }
                 label_push(scope, (JumpLabel) {
                     .label = n->expr.loop.label,
-                    .node = expr
+                    .node = n
                 });
                 if (n->expr.loop.on_next_iter) {
                     typecheck_expr(prog, scope, n->expr.loop.on_next_iter, TYPE_UNKNOWN);
@@ -724,7 +720,7 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
             }
             break;
         case EXPR_FE_OPERATOR:
-            t = typecheck_operator(prog, scope, expr, type_hint);
+            t = typecheck_operator(prog, scope, n, type_hint);
             break;
         case EXPR_RETURN:
             {
@@ -744,44 +740,41 @@ static TypeId typecheck_expr(Program *prog, Scope *scope, NodeIdx expr, TypeId t
     return t;
 }
 
-static void typecheck_fn(Program *prog, NodeIdx fn) {
-    AstNode *fn_node = get_node(fn);
-
+static void typecheck_fn(Program *prog, AstNode *fn) {
     // ignore extern / forward declarations
-    if (fn_node->fn.body == 0) {
+    if (fn->fn.body == 0) {
         return;
     }
 
-    TypeId expected = get_type(fn_node->fn.type)->func.ret;
+    TypeId expected = get_type(fn->fn.type)->func.ret;
     Scope scope = new_localscope(expected);
 
     /* Add function arguments to scope */
-    for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
-        assert(get_node(arg)->type == AST_FN_ARG);
+    for (AstNode *arg=fn->fn.first_arg; arg != 0; arg=arg->next_sibling) {
+        assert(arg->type == AST_FN_ARG);
         
         scope_push(&scope, (Variable) {
-            .name = get_node(arg)->fn_arg.name,
-            .type = get_node(arg)->fn_arg.type
+            .name = arg->fn_arg.name,
+            .type = arg->fn_arg.type
         });
     }
 
-    TypeId returned = typecheck_expr(prog, &scope, fn_node->fn.body, expected);
+    TypeId returned = typecheck_expr(prog, &scope, fn->fn.body, expected);
 
-    validate_return(fn_node->start_token, scope.return_type, returned);
+    validate_return(fn->start_token, scope.return_type, returned);
 
     free_localscope(&scope);
 }
 
-static void check_is_constexpr(Program *prog, NodeIdx node) {
-    AstNode *n = get_node(node);
+static void check_is_constexpr(Program *prog, AstNode *n) {
     assert(n->type == AST_EXPR);
     if (n->expr.type == EXPR_CAST) {
         // casts to pointer can be compile-time evaluated
         const TypeId cast_to = n->expr.cast.to_type;
         if (get_type(cast_to)->type == TT_PTR) {
             check_is_constexpr(prog, n->expr.cast.arg);
-            const NodeIdx next_sibling = n->next_sibling;
-            *n = *get_node(n->expr.cast.arg);
+            AstNode *next_sibling = n->next_sibling;
+            *n = *n->expr.cast.arg;
             n->next_sibling = next_sibling;
             n->expr.eval_type = cast_to;
         } else {
@@ -808,8 +801,7 @@ static void check_is_constexpr(Program *prog, NodeIdx node) {
     }
 }
 
-static void typecheck_global(Program *prog, NodeIdx node) {
-    AstNode *n = get_node(node);
+static void typecheck_global(Program *prog, AstNode *n) {
     assert(n->type == AST_DEF_VAR);
 
     if (n->var_def.type != TYPE_UNKNOWN) check_valid_binding_type(n, n->var_def.type);
@@ -842,11 +834,11 @@ static void typecheck_global(Program *prog, NodeIdx node) {
 
 /** deduces the eval_type of AST_EXPR nodes, and checks for type errors. */
 void typecheck_program(Program *prog) {
-    for (NodeIdx node=get_node(prog->root)->module.first_child; node != 0; node=get_node(node)->next_sibling) {
-        if (get_node(node)->type == AST_FN) {
+    for (AstNode *node=prog->root->module.first_child; node != 0; node=node->next_sibling) {
+        if (node->type == AST_FN) {
             typecheck_fn(prog, node);
         }
-        if (get_node(node)->type == AST_DEF_VAR) {
+        if (node->type == AST_DEF_VAR) {
             typecheck_global(prog, node);
         }
     }

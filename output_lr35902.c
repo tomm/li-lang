@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include "str.h"
 #include "vec.h"
 #include "tokenizer.h"
@@ -44,7 +45,7 @@ const AstNode *lookup_global_sym(Str name)
 {
     Symbol *sym = lookup_program_symbol(program, name);
     if (sym) {
-        return get_node(sym->obj);
+        return sym->obj;
     } else {
         return NULL;
     }
@@ -139,23 +140,23 @@ typedef struct GlobalVariable {
     Str symbol_name;
     int size_bytes;
     bool is_const; /* consts go in ROM */
-    NodeIdx value;
+    AstNode *value;
 } GlobalVariable;
 
 static Vec /*<GlobalVariable>*/ _global_vars;
 
 
-typedef struct NodeIdxJumpLabel {
-    NodeIdx node;
+typedef struct AstNodeJumpLabel {
+    AstNode *node;
     int label_num;
     int stack_offset; // so we can correct stack before jump (due to temporaries)
-} NodeIdxJumpLabel;
+} AstNodeJumpLabel;
 
-static Vec /*<NodeIdxJumpLabel>*/ _jump_labels;
+static Vec /*<AstNodeJumpLabel>*/ _jump_labels;
 
-NodeIdxJumpLabel *lookup_jump_label(NodeIdx node) {
+AstNodeJumpLabel *lookup_jump_label(AstNode *node) {
     for (int i=0; i<_jump_labels.len; ++i) {
-        NodeIdxJumpLabel *l = vec_get(&_jump_labels, i);
+        AstNodeJumpLabel *l = vec_get(&_jump_labels, i);
         if (l->node == node) return l;
     }
     return NULL;
@@ -229,7 +230,7 @@ static int get_fn_return_type_stack_size(TypeId ret) {
 }
 
 static int get_call_return_type_stack_size(const AstNode *call) {
-    const AstNode *callee = get_node(call->expr.call.callee);
+    const AstNode *callee = call->expr.call.callee;
     // consider size of return-by-value non-primitive types (array/struct)
     if (callee->type == AST_EXPR && callee->expr.type == EXPR_IDENT) {
         const AstNode *fn = lookup_global_sym(callee->expr.ident);
@@ -355,7 +356,7 @@ static void emit_push_fn_arg(AstNode *n, Value v, StackFrame *frame) {
     }
 }
 
-static void emit_push_temporary(NodeIdx nidx, Value v, StackFrame *frame) {
+static void emit_push_temporary(AstNode *nidx, Value v, StackFrame *frame) {
     assert(v.typeId != VOID);
     switch (v.storage) {
         case ST_REG_VAL:
@@ -431,7 +432,7 @@ static Value emit_pop_temporary(Value v, StackFrame *frame, bool to_aux_reg) {
     }
     assert(false);
 }
-static Value emit_expression(NodeIdx expr, StackFrame frame);
+static Value emit_expression(AstNode *expr, StackFrame frame);
 
 static void emit_bool_to_z_flag(Value v)
 {
@@ -440,9 +441,7 @@ static void emit_bool_to_z_flag(Value v)
     _i("and a, a");
 }
 
-Value emit_assign_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
-
+Value emit_assign_8(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -450,7 +449,7 @@ Value emit_assign_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     v1 = emit_pop_temporary(v1, frame, false);
 
     if (v1.storage != ST_REG_EA) {
-        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
+        fatal_error(n->start_token, "Can not assign to temporary");
     }
     switch (op) {
         case OP_ASSIGN_8:
@@ -550,8 +549,7 @@ Value emit_assign_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_ptr_deref(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v = emit_expression(n->expr.builtin.arg1, *frame);
     v = emit_value_to_register(v, false); // v in `hl`
     assert(get_type(v.typeId)->type == TT_PTR);
@@ -560,20 +558,18 @@ Value emit_ptr_deref(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx
     return (Value) { .typeId = get_type(v.typeId)->ptr.ref, .storage = ST_REG_EA };
 }
 
-Value emit_addressof(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_addressof(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     if (v.storage != ST_REG_EA) {
-        fatal_error(get_node(expr)->start_token, "Can not take address of temporary");
+        fatal_error(n->start_token, "Can not take address of temporary");
     }
 
     // no ASM is emitted. If we have a value in ST_REG_EA, then we have its pointer in ST_REG_VAL :)
     return (Value) { .typeId = make_ptr_type(v.typeId), .storage = ST_REG_VAL };
 }
 
-Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx _) {
-    AstNode *n = get_node(expr);
+Value emit_logical_not(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *_) {
     Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     const int false_label = _local_label_seq++;
@@ -586,10 +582,7 @@ Value emit_logical_not(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
     return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
 }
 
-Value emit_unary_op_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
-    //AstNode *arg = get_node(n->expr.builtin.arg1);
-
+Value emit_unary_op_8(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v = emit_expression(n->expr.builtin.arg1, *frame);
 
     switch (op) {
@@ -607,8 +600,7 @@ Value emit_unary_op_8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     }
 }
 
-Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_array_indexing_u8(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -631,8 +623,7 @@ Value emit_array_indexing_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op,
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
 
-Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_ptr_addsub_u16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -665,8 +656,7 @@ Value emit_ptr_addsub_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, No
     return (Value) { .storage = ST_REG_VAL, .typeId = v1.typeId };
 }
 
-Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_array_indexing_u16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -687,9 +677,7 @@ Value emit_array_indexing_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op
     return (Value) { .storage = ST_REG_EA, .typeId = get_type(v1.typeId)->array.contained };
 }
 
-Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
-
+Value emit_logical_and(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
     const int false_label = _local_label_seq++;
@@ -707,9 +695,7 @@ Value emit_logical_and(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
     return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
-Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
-
+Value emit_logical_or(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_bool_to_z_flag(v1);
     const int true_label = _local_label_seq++;
@@ -727,8 +713,7 @@ Value emit_logical_or(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     return (Value) { .storage = ST_REG_VAL, .typeId = BOOL };
 }
 
-Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_binop_u8(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -869,8 +854,7 @@ Value emit_binop_u8(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-Value emit_unary_op_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_unary_op_16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v = emit_expression(n->expr.builtin.arg1, *frame);
     assert(v.typeId == U16 || v.typeId == I16);
 
@@ -898,8 +882,7 @@ Value emit_unary_op_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeI
     }
 }
 
-Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_assign_sized(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -919,8 +902,7 @@ Value emit_assign_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, Node
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_EA };
 }
 
-Value emit_eq_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_eq_sized(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -938,8 +920,7 @@ Value emit_eq_sized(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     return (Value) { .typeId = BOOL, .storage = ST_REG_VAL };
 }
 
-Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_assign_u16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -948,7 +929,7 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     v1 = emit_pop_temporary(v1, frame, false);
 
     if (v1.storage != ST_REG_EA) {
-        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
+        fatal_error(n->start_token, "Can not assign to temporary");
     }
 
     switch (op) {
@@ -1086,14 +1067,13 @@ Value emit_assign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeId
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_ptr_opassign_u16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
 
     if (v1.storage != ST_REG_EA) {
-        fatal_error(get_node(expr)->start_token, "Can not assign to temporary");
+        fatal_error(n->start_token, "Can not assign to temporary");
     }
 
     assert(get_type(v1.typeId)->type == TT_PTR);
@@ -1129,8 +1109,7 @@ Value emit_ptr_opassign_u16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, 
     return (Value) { .storage = ST_REG_EA, .typeId = v1.typeId };
 }
 
-Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx expr1, NodeIdx expr2) {
-    AstNode *n = get_node(expr);
+Value emit_binop_16(AstNode *n, StackFrame *frame, enum BuiltinOp op, AstNode *expr1, AstNode *expr2) {
     Value v1 = emit_expression(n->expr.builtin.arg1, *frame);
     emit_push_temporary(n->expr.builtin.arg1, v1, frame);
     Value v2 = emit_expression(n->expr.builtin.arg2, *frame);
@@ -1340,8 +1319,7 @@ Value emit_binop_16(NodeIdx expr, StackFrame *frame, enum BuiltinOp op, NodeIdx 
     return (Value) { .typeId = v1.typeId, .storage = ST_REG_VAL };
 }
 
-static Value emit_builtin(NodeIdx call, StackFrame frame) {
-    AstNode *n = get_node(call);
+static Value emit_builtin(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_BUILTIN);
     enum BuiltinOp op = n->expr.builtin.op;
 
@@ -1371,7 +1349,7 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_GT_I8:
         case OP_LTE_I8:
         case OP_GTE_I8:
-            result = emit_binop_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_binop_u8(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ASR_16:
         case OP_ADD_16:
@@ -1396,24 +1374,24 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_GT_I16:
         case OP_LTE_I16:
         case OP_GTE_I16:
-            result = emit_binop_16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_binop_16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_NOT_8:
         case OP_UNARY_NEG_8:
-            result = emit_unary_op_8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_unary_op_8(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_NOT_16:
         case OP_UNARY_NEG_16:
-            result = emit_unary_op_16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_unary_op_16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_LOGICAL_AND:
-            result = emit_logical_and(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_logical_and(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_LOGICAL_OR:
-            result = emit_logical_or(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_logical_or(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_LOGICAL_NOT:
-            result = emit_logical_not(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_logical_not(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ASSIGN_8:
         case OP_ADD_ASSIGN_8:
@@ -1429,7 +1407,7 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_AND_ASSIGN_8:
         case OP_OR_ASSIGN_8:
         case OP_XOR_ASSIGN_8:
-            result = emit_assign_8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_assign_8(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ASSIGN_16:
         case OP_ADD_ASSIGN_16:
@@ -1445,37 +1423,37 @@ static Value emit_builtin(NodeIdx call, StackFrame frame) {
         case OP_AND_ASSIGN_16:
         case OP_OR_ASSIGN_16:
         case OP_XOR_ASSIGN_16:
-            result = emit_assign_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_assign_u16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ASSIGN_SIZED: /* structs, arrays, etc */
-            result = emit_assign_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_assign_sized(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_NEQ_SIZED: /* structs, arrays, etc */
-            result = emit_eq_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_eq_sized(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             _i("xor a, 1"); // not
             break;
         case OP_EQ_SIZED: /* structs, arrays, etc */
-            result = emit_eq_sized(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_eq_sized(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ARRAY_INDEX_8:
-            result = emit_array_indexing_u8(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_array_indexing_u8(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ARRAY_INDEX_16:
-            result = emit_array_indexing_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_array_indexing_u16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_ADDRESSOF:
-            result = emit_addressof(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_addressof(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_DEREF:
-            result = emit_ptr_deref(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_ptr_deref(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_PTR_ADD:
         case OP_PTR_SUB:
-            result = emit_ptr_addsub_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_ptr_addsub_u16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
         case OP_PTR_ADD_ASSIGN:
         case OP_PTR_SUB_ASSIGN:
-            result = emit_ptr_opassign_u16(call, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
+            result = emit_ptr_opassign_u16(n, &frame, op, n->expr.builtin.arg1, n->expr.builtin.arg2);
             break;
     }
     if (!is_type_eq(result.typeId, n->expr.eval_type)) {
@@ -1519,8 +1497,7 @@ static Value emit_truncate_16_8(Value v, TypeId to_type) {
     return (Value) { .typeId = to_type, .storage = ST_REG_VAL };
 }
 
-static Value emit_cast(NodeIdx cast, StackFrame frame) {
-    AstNode *n = get_node(cast);
+static Value emit_cast(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CAST);
 
     TypeId to_type = n->expr.cast.to_type;
@@ -1597,28 +1574,26 @@ no_op_cast:
     return (Value) { .typeId = to_type, .storage = v1.storage };
 }
 
-static void emit_call_push_args(int arg_num, NodeIdx arg_list_head, StackFrame *frame) {
+static void emit_call_push_args(int arg_num, AstNode *arg_list_head, StackFrame *frame) {
     // push last to first
     if (arg_list_head == 0) {
         return;
     }
 
-    AstNode *n = get_node(arg_list_head);
-    if (n->next_sibling != 0) {
-        emit_call_push_args(arg_num+1, n->next_sibling, frame);
+    if (arg_list_head->next_sibling != 0) {
+        emit_call_push_args(arg_num+1, arg_list_head->next_sibling, frame);
     }
 
-    assert(n->type == AST_EXPR);
+    assert(arg_list_head->type == AST_EXPR);
     Value v = emit_expression(arg_list_head, *frame);
-    emit_push_fn_arg(n, v, frame);
+    emit_push_fn_arg(arg_list_head, v, frame);
 }
 
-static Value emit_call(NodeIdx call, StackFrame frame) {
-    AstNode *n = get_node(call);
+static Value emit_call(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_CALL);
 
     // is it a built-in op?
-    AstNode *callee = get_node(n->expr.call.callee);
+    AstNode *callee = n->expr.call.callee;
 
     const int return_label = _local_label_seq++;
     // call by function pointer
@@ -1650,19 +1625,18 @@ static Value emit_call(NodeIdx call, StackFrame frame) {
     return (Value) { .typeId = ret, .storage = get_type(ret)->type == TT_ARRAY ? ST_REG_EA : ST_REG_VAL };
 }
 
-static Value emit_loop(NodeIdx expr, StackFrame frame) {
-    AstNode *n = get_node(expr);
+static Value emit_loop(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_LOOP);
 
     const int jump_label = _local_label_seq++;
 
-    vec_push(&_jump_labels, &(NodeIdxJumpLabel) {
-        .node = expr,
+    vec_push(&_jump_labels, &(AstNodeJumpLabel) {
+        .node = n,
         .label_num = jump_label,
         .stack_offset = frame.stack_offset,
     });
 
-    const NodeIdx on_next_iter = n->expr.loop.on_next_iter;
+    const AstNode *on_next_iter = n->expr.loop.on_next_iter;
 
     if (on_next_iter) {
         _i("jp .l%d_cond", jump_label);
@@ -1686,8 +1660,7 @@ static Value emit_loop(NodeIdx expr, StackFrame frame) {
     return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
 }
 
-static Value emit_if_else(NodeIdx expr, StackFrame frame) {
-    AstNode *n = get_node(expr);
+static Value emit_if_else(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IF_ELSE);
 
     Value condition = emit_expression(n->expr.if_else.condition, frame);
@@ -1721,8 +1694,7 @@ static Value emit_if_else(NodeIdx expr, StackFrame frame) {
     return on_true;
 }
 
-static Value emit_identifier(NodeIdx expr, StackFrame frame) {
-    AstNode *n = get_node(expr);
+static Value emit_identifier(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_IDENT);
 
     const StackVar *var = lookup_stack_var(n->expr.ident, frame);
@@ -1755,8 +1727,7 @@ static Value emit_identifier(NodeIdx expr, StackFrame frame) {
     fatal_error(n->start_token, "Compiler bug. Undefined variable '%.*s' reached code generator", (int)n->expr.ident.len, n->expr.ident.s);
 }
 
-static Value emit_local_scope(NodeIdx scope, StackFrame frame) {
-    const AstNode *n = get_node(scope);
+static Value emit_local_scope(AstNode *n, StackFrame frame) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_LOCAL_SCOPE);
 
     /*StackVarIdx var =*/ alloc_stack_var(n->start_token, frame, (StackVar) {
@@ -1767,12 +1738,12 @@ static Value emit_local_scope(NodeIdx scope, StackFrame frame) {
     });
     frame.locals_top += get_type(n->expr.local_scope.var_type)->size;
     frame.num_vars++;
-    Value v = emit_expression(get_node(scope)->expr.local_scope.scoped_expr, frame);
+    Value v = emit_expression(n->expr.local_scope.scoped_expr, frame);
     unalloc_stack_var();
     return v;
 }
 
-static Value emit_return(NodeIdx val, StackFrame frame) {
+static Value emit_return(AstNode *val, StackFrame frame) {
     Value ret_val = emit_expression(val, frame);
     emit_value_to_register(ret_val, false);
 
@@ -1784,15 +1755,14 @@ static Value emit_return(NodeIdx val, StackFrame frame) {
     return ret_val;
 }
 
-static Value emit_expression(NodeIdx expr, StackFrame frame) {
+static Value emit_expression(AstNode *n, StackFrame frame) {
     Value v = (Value) { .typeId = VOID, .storage = ST_REG_VAL };
-    AstNode *n = get_node(expr);
     assert(n->type == AST_EXPR);
 
     switch (n->expr.type) {
         case EXPR_GOTO:
             {
-                NodeIdxJumpLabel *l = lookup_jump_label(n->expr.goto_.target);
+                AstNodeJumpLabel *l = lookup_jump_label(n->expr.goto_.target);
                 assert(l != NULL);
                 const int stack_correction = frame.stack_offset - l->stack_offset;
                 if (stack_correction) {
@@ -1810,19 +1780,19 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             // should not reach backend
             assert(false);
         case EXPR_BUILTIN:
-            return emit_builtin(expr, frame);
+            return emit_builtin(n, frame);
         case EXPR_ASM:
             fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);
             return (Value) { .typeId = VOID, .storage = ST_REG_VAL };
         case EXPR_CALL:
-            return emit_call(expr, frame);
+            return emit_call(n, frame);
         case EXPR_LIST:
-            for (NodeIdx e=n->expr.list.first_child; e != 0; e=get_node(e)->next_sibling) {
+            for (AstNode *e=n->expr.list.first_child; e != 0; e=e->next_sibling) {
                 v = emit_expression(e, frame);
             }
             break;
         case EXPR_IDENT:
-            return emit_identifier(expr, frame);
+            return emit_identifier(n, frame);
         case EXPR_LITERAL:
             switch (n->expr.literal.type) {
                 case LIT_INT_ANY:
@@ -1852,9 +1822,9 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
                             .size_bytes = get_type(n->expr.eval_type)->size,
                             .symbol_name = { .s = 0 },
                             .is_const = true,
-                            .value = expr
+                            .value = n
                         });
-                        _i("ld hl, __L%lld", (void*)expr);
+                        _i("ld hl, __L%lx", (uint64_t)n);
                     }
                     v = (Value) { .typeId = n->expr.eval_type, .storage = ST_REG_EA };
                     break;
@@ -1864,13 +1834,13 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
             }
             break;
         case EXPR_CAST:
-            return emit_cast(expr, frame);
+            return emit_cast(n, frame);
         case EXPR_IF_ELSE:
-            return emit_if_else(expr, frame);
+            return emit_if_else(n, frame);
         case EXPR_LOOP:
-            return emit_loop(expr, frame);
+            return emit_loop(n, frame);
         case EXPR_LOCAL_SCOPE:
-            return emit_local_scope(expr, frame);
+            return emit_local_scope(n, frame);
         case EXPR_RETURN:
             return emit_return(n->expr.return_.val, frame);
         case EXPR_MEMBER_ACCESS:
@@ -1892,8 +1862,7 @@ static Value emit_expression(NodeIdx expr, StackFrame frame) {
 }
 
 // just records for ASM emission after code has been emitted
-static void record_def_var(NodeIdx def_var) {
-    AstNode *var_node = get_node(def_var);
+static void record_def_var(AstNode *var_node) {
     assert(var_node->type == AST_DEF_VAR);
     TypeId t = var_node->var_def.type;
 
@@ -1911,10 +1880,9 @@ static void record_def_var(NodeIdx def_var) {
 
 int max(int a, int b) { return a>b?a:b; }
 
-static int get_max_local_vars_size(NodeIdx n)
+static int get_max_local_vars_size(AstNode *node)
 {
-    if (n == 0) return 0;
-    const AstNode *node = get_node(n);
+    if (node == NULL) return 0;
 
     assert(node->type == AST_EXPR);
 
@@ -1936,7 +1904,7 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.if_else.on_false));
             break;
         case EXPR_LIST:
-            for (NodeIdx c=node->expr.list.first_child; c!=0; c=get_node(c)->next_sibling) {
+            for (AstNode *c=node->expr.list.first_child; c!=0; c=c->next_sibling) {
                 size = max(size, get_max_local_vars_size(c));
             }
             break;
@@ -1948,7 +1916,7 @@ static int get_max_local_vars_size(NodeIdx n)
             size = max(size, get_max_local_vars_size(node->expr.member_access.struct_expr));
             break;
         case EXPR_CALL:
-            for (NodeIdx c=node->expr.call.first_arg; c!=0; c=get_node(c)->next_sibling) {
+            for (AstNode *c=node->expr.call.first_arg; c!=0; c=c->next_sibling) {
                 size = max(size, get_max_local_vars_size(c));
             }
             break;
@@ -1981,8 +1949,7 @@ static int get_max_local_vars_size(NodeIdx n)
     return size;
 }
 
-static Value emit_fn(NodeIdx fn) {
-    AstNode *fn_node = get_node(fn);
+static Value emit_fn(AstNode *fn_node) {
     assert(fn_node->type == AST_FN);
 
     __("%.*s:", (int)fn_node->fn.name.len, fn_node->fn.name.s);
@@ -2007,14 +1974,14 @@ static Value emit_fn(NodeIdx fn) {
 
     StackFrame frame = { .num_vars = 0, .stack_offset = 0, .locals_top = 0, .locals_size = local_vars_bytes };
 
-    for (NodeIdx arg=fn_node->fn.first_arg; arg != 0; arg=get_node(arg)->next_sibling) {
-        assert(get_node(arg)->type == AST_FN_ARG);
+    for (AstNode *arg=fn_node->fn.first_arg; arg != 0; arg=arg->next_sibling) {
+        assert(arg->type == AST_FN_ARG);
         
-        TypeId argtype = get_node(arg)->fn_arg.type;
+        TypeId argtype = arg->fn_arg.type;
 
-        /*StackVarIdx v =*/ alloc_stack_var(get_node(arg)->start_token, frame, (StackVar) {
+        /*StackVarIdx v =*/ alloc_stack_var(arg->start_token, frame, (StackVar) {
             .type = argtype,
-            .ident = get_node(arg)->fn_arg.name,
+            .ident = arg->fn_arg.name,
             .offset = bp_offset,
             .is_fn_arg = true
         });
@@ -2032,8 +1999,7 @@ static Value emit_fn(NodeIdx fn) {
     return emit_return(fn_node->fn.body, frame);
 }
 
-static void _emit_const(NodeIdx node) {
-    AstNode *n = get_node(node);
+static void _emit_const(AstNode *n) {
     assert(n->type == AST_EXPR && n->expr.type == EXPR_LITERAL);
 
     switch (n->expr.literal.type) {
@@ -2056,7 +2022,7 @@ static void _emit_const(NodeIdx node) {
                     n->expr.literal.literal_str.s);
             break;
         case LIT_ARRAY:
-            for (NodeIdx child=n->expr.literal.literal_array_first_val; child!=0; child=get_node(child)->next_sibling) {
+            for (AstNode *child=n->expr.literal.literal_array_first_val; child!=0; child=child->next_sibling) {
                 _emit_const(child);
             }
             break;
@@ -2072,7 +2038,7 @@ static void emit_rom_globals() {
             if (v.symbol_name.s) {
                 __("%.*s:", v.symbol_name.len, v.symbol_name.s);
             } else {
-                __("__L%lld:", (void*)v.value /* is NodeIdx */);
+                __("__L%lx:", (uint64_t)v.value /* is AstNode **/);
             }
             _emit_const(v.value);
         }
@@ -2093,7 +2059,7 @@ static void emit_ram_globals() {
 static void init() {
     _stack_vars = vec_init(sizeof(StackVar));
     _global_vars = vec_init(sizeof(GlobalVariable));
-    _jump_labels = vec_init(sizeof(NodeIdxJumpLabel));
+    _jump_labels = vec_init(sizeof(AstNodeJumpLabel));
 }
 
 void output_lr35902(Program *prog) {
@@ -2102,21 +2068,20 @@ void output_lr35902(Program *prog) {
     program = prog;
     output = fopen("out.asm", "w");
 
-    AstNode *root_node = get_node(prog->root);
+    AstNode *root_node = prog->root;
     assert(root_node->type == AST_MODULE);
 
     emit_boilerplate();
 
-    for (NodeIdx node=root_node->module.first_child; node != 0; node=get_node(node)->next_sibling) {
-        AstNode *n = get_node(node);
+    for (AstNode *n=root_node->module.first_child; n != 0; n=n->next_sibling) {
         if (n->type == AST_FN) {
             if (n->fn.body != 0) {
                 vec_zero(&_jump_labels);
-                emit_fn(node);
+                emit_fn(n);
             }
         }
         else if (n->type == AST_DEF_VAR) {
-            record_def_var(node);
+            record_def_var(n);
         }
         else if (n->type == AST_EXPR && n->expr.type == EXPR_ASM) {
             fprintf(output, "\n%.*s\n", (int)n->expr.asm_.asm_text.len, n->expr.asm_.asm_text.s);

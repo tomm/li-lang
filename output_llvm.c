@@ -19,7 +19,7 @@ void output_llvm(Program *prog) {
     program = prog;
     output = fopen("out.ll", "w");
 
-    AstNode *root_node = get_node(prog->root);
+    AstNode *root_node = prog->root;
     assert(root_node->type == AST_MODULE);
 
     emit_boilerplate();

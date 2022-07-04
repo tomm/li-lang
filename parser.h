@@ -6,7 +6,7 @@
 #include "types.h"
 #include "builtin.h"
 
-typedef struct AstNode *NodeIdx;
+typedef struct AstNode AstNode;
 typedef struct Token Token;
 typedef struct Program Program;
 
@@ -16,17 +16,17 @@ typedef struct AstNode {
     } type;
 
     const Token *start_token; /* for error reporting */
-    NodeIdx next_sibling; /* 0 is end */
+    AstNode *next_sibling; /* 0 is end */
 
     union {
         struct {
-            NodeIdx first_child;
+            AstNode *first_child;
         } module;
 
         struct {
             Str name;
-            NodeIdx first_arg;
-            NodeIdx body;
+            AstNode *first_arg;
+            AstNode *body;
             TypeId type;
         } fn;
 
@@ -39,7 +39,7 @@ typedef struct AstNode {
             Str name;
             TypeId type;
             bool is_const;
-            NodeIdx value;
+            AstNode *value;
         } var_def;
 
         struct {
@@ -73,66 +73,66 @@ typedef struct AstNode {
                         bool literal_bool;
                         int literal_int;
                         Str literal_str;
-                        NodeIdx literal_array_first_val;
+                        AstNode *literal_array_first_val;
                     };
                 } literal;
 
                 struct {
-                    NodeIdx val;
+                    AstNode *val;
                 } return_;
 
                 struct {
                     bool is_continue; // otherwise is break
                     Str label;
-                    NodeIdx target; // resolved in second frontend pass
+                    AstNode *target; // resolved in second frontend pass
                 } goto_;
 
                 struct {
                     Str var_name;
                     TypeId var_type;
-                    NodeIdx value; // this is kept, but actually a OPERATOR_ASSIGN is inserted into the body
-                    NodeIdx scoped_expr;
+                    AstNode *value; // this is kept, but actually a OPERATOR_ASSIGN is inserted into the body
+                    AstNode *scoped_expr;
                 } local_scope;
 
                 struct {
                     Str label;
-                    NodeIdx condition; // 0 indicates unconditional `loop`
-                    NodeIdx body;
-                    NodeIdx on_next_iter; // 0 indicates no action
+                    AstNode *condition; // 0 indicates unconditional `loop`
+                    AstNode *body;
+                    AstNode *on_next_iter; // 0 indicates no action
                 } loop;
 
                 struct {
-                    NodeIdx condition;
-                    NodeIdx on_true;
-                    NodeIdx on_false;
+                    AstNode *condition;
+                    AstNode *on_true;
+                    AstNode *on_false;
                 } if_else;
 
                 struct {
-                    NodeIdx first_child;
+                    AstNode *first_child;
                 } list;
 
                 Str ident;
 
                 struct {
-                    NodeIdx struct_expr;
+                    AstNode *struct_expr;
                     Str member;
                 } member_access;
 
                 struct {
-                    NodeIdx callee;
-                    NodeIdx first_arg;
+                    AstNode *callee;
+                    AstNode *first_arg;
                     bool is_indirect; /* Filled in by type checker */
                 } call;
 
                 struct {
-                    NodeIdx arg1;
-                    NodeIdx arg2;
+                    AstNode *arg1;
+                    AstNode *arg2;
                     enum BuiltinOp op;
                 } builtin;
 
                 struct {
-                    NodeIdx arg1;
-                    NodeIdx arg2;
+                    AstNode *arg1;
+                    AstNode *arg2;
                     enum OperatorOp {
                         OPERATOR_ADD,
                         OPERATOR_SUB,
@@ -173,7 +173,7 @@ typedef struct AstNode {
                 } fe_operator;
 
                 struct {
-                    NodeIdx arg;
+                    AstNode *arg;
                     TypeId to_type;
                 } cast;
 
@@ -194,9 +194,8 @@ typedef struct TokenCursor {
 extern void init_parser();
 extern const char* operator_name(enum OperatorOp op);
 extern void parse_file(Program *prog, const char *filename);
-extern void print_ast(NodeIdx nidx, int depth);
-AstNode *get_node(NodeIdx idx);
+extern void print_ast(AstNode *node, int depth);
 // includes self
-extern int ast_node_sibling_size(NodeIdx n);
+extern int ast_node_sibling_size(AstNode *n);
 
 #endif /* __PARSER_H */
