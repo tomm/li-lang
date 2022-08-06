@@ -2,3 +2,8 @@ lic
 *.o
 *.swp
 *.gb
+
+
+# Added by cargo
+
+/target
