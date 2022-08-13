@@ -1,3 +1,5 @@
+* recursive structs don't resolve:
+    struct A { left: @A   right: @A }
 * should check for invalid assignment to temporaries in frontend - but only
   backend knows about temporaryness...
 * many compile errors still need to be moved from backend to frontend

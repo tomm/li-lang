@@ -85,7 +85,7 @@ pub struct TokenLoc<'a> {
     pub filename: &'a str
 }
 
-pub fn lex_file<'ctx, 'a>(sources: &'ctx mut Sources, filename: &'a str) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
+pub fn lex_file<'ctx, 'a>(sources: &'ctx Sources, filename: &'a str) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
     // Get 'ctx scoped file contents and filename
     let (_filename, buf) = sources.get_src(filename);
     lex(buf, _filename)
@@ -149,52 +149,27 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
 
     println!("len {}", buf.len());
     'outer: loop {
-        macro_rules! peek {
+        macro_rules! next {
             () => {
-                match i.clone().next() {
-                    Some(c) => c,
-                    None => '\0'
-                }
-            };
-        }
-
-        macro_rules! skip {
-            () => {
-                if let Some(c) = i.next() {
-                    c
-                } else {
-                    break 'outer;
-                }
+                i.next().unwrap_or('\0')
             };
         }
 
         macro_rules! expect {
             ($c: expr) => {
-                if skip!() != $c {
+                if next!() != $c {
                     error!(format!("Expected '{}'", $c));
                 }
             };
         }
 
-        macro_rules! lookahead {
+        macro_rules! peek {
             ($n: expr) => {
                 i.clone().skip($n).next().unwrap_or('\0')
             };
         }
 
-        /*
-        let mut emit = |n: usize, token: Token<'ctx>| {
-                    tokens.push(TokenLoc {
-                        line: i.line,
-                        col: i.col,
-                        filename,
-                        token
-                    });
-                    i.nth(n);
-                    last_tok_needs_space = false;
-        };
-        */
-        macro_rules! emit {
+        macro_rules! token {
             ($n: expr, $a: expr) => {
                 {
                     tokens.push(TokenLoc {
@@ -204,7 +179,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         token: $a,
                     });
                     for _ in 0..$n {
-                        skip!();
+                        next!();
                     }
                     last_tok_needs_space = false;
                 }
@@ -213,7 +188,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
 
         /* Emit a token that needs to be separated from other anti-social tokens
          * (by whitespace or non-antisocial tokens) */
-        macro_rules! emit_antisocial {
+        macro_rules! antisocial_token {
             ($n: expr, $a: expr) => {
                 {
                     tokens.push(TokenLoc {
@@ -223,7 +198,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         token: $a,
                     });
                     for _ in 0..$n {
-                        skip!();
+                        next!();
                     }
                     last_tok_needs_space = true;
                 }
@@ -253,119 +228,122 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
 
         mark_token_start!();
 
-        match peek!() {
+        match peek!(0) {
             '\0' => break 'outer,
-            '{' => emit!(1, Token::LBrace),
-            '}' => emit!(1, Token::RBrace),
-            '(' => emit!(1, Token::LParen),
-            ')' => emit!(1, Token::RParen),
-            '[' => emit!(1, Token::LSqBracket),
-            ']' => emit!(1, Token::RSqBracket),
-            ';' => emit!(1, Token::Semicolon),
-            ':' => emit!(1, Token::Colon),
-            '~' => emit!(1, Token::Tilde),
-            '#' => emit!(1, Token::Hash),
-            '@' => emit!(1, Token::AtSign),
-            '&' => match lookahead!(1) {
-                '=' => emit!(2, Token::BitAndAssign),
-                _ => emit!(1, Token::Ampersand),
+            '{' => token!(1, Token::LBrace),
+            '}' => token!(1, Token::RBrace),
+            '(' => token!(1, Token::LParen),
+            ')' => token!(1, Token::RParen),
+            '[' => token!(1, Token::LSqBracket),
+            ']' => token!(1, Token::RSqBracket),
+            ';' => token!(1, Token::Semicolon),
+            ':' => token!(1, Token::Colon),
+            '~' => token!(1, Token::Tilde),
+            '#' => token!(1, Token::Hash),
+            '@' => token!(1, Token::AtSign),
+            '&' => match peek!(1) {
+                '=' => token!(2, Token::BitAndAssign),
+                _ => token!(1, Token::Ampersand),
             },
-            '|' => match lookahead!(1) {
-                '=' => emit!(2, Token::BitOrAssign),
-                _ => emit!(1, Token::Pipe),
+            '|' => match peek!(1) {
+                '=' => token!(2, Token::BitOrAssign),
+                _ => token!(1, Token::Pipe),
             },
-            '^' => match lookahead!(1) {
-                '=' => emit!(2, Token::BitXorAssign),
-                _ => emit!(1, Token::Acute),
+            '^' => match peek!(1) {
+                '=' => token!(2, Token::BitXorAssign),
+                _ => token!(1, Token::Acute),
             },
-            '$' => emit!(1, Token::Dollar),
-            ',' => emit!(1, Token::Comma),
-            '.' => emit!(1, Token::Period),
-            '+' => match lookahead!(1) {
-                '=' => emit!(2, Token::PlusAssign),
-                _ => emit!(1, Token::Plus),
+            '$' => token!(1, Token::Dollar),
+            ',' => token!(1, Token::Comma),
+            '.' => token!(1, Token::Period),
+            '+' => match peek!(1) {
+                '=' => token!(2, Token::PlusAssign),
+                _ => token!(1, Token::Plus),
             },
-            '-' => match lookahead!(1) {
-                '>' => emit!(2, Token::RArrow),
-                '=' => emit!(2, Token::MinusAssign),
-                _ => emit!(1, Token::Minus),
+            '-' => match peek!(1) {
+                '>' => token!(2, Token::RArrow),
+                '=' => token!(2, Token::MinusAssign),
+                _ => token!(1, Token::Minus),
             },
-            '*' => match lookahead!(1) {
-                '=' => emit!(2, Token::MulAssign),
-                _ => emit!(1, Token::Asterisk)
+            '*' => match peek!(1) {
+                '=' => token!(2, Token::MulAssign),
+                _ => token!(1, Token::Asterisk)
             },
-            '%' => match lookahead!(1) {
-                '=' => emit!(2, Token::ModAssign),
-                _ => emit!(1, Token::Percent)
+            '%' => match peek!(1) {
+                '=' => token!(2, Token::ModAssign),
+                _ => token!(1, Token::Percent)
             },
-            '=' => match lookahead!(1) {
-                '=' => emit!(2, Token::CmpEq),
-                _ => emit!(1, Token::Assign)
+            '=' => match peek!(1) {
+                '=' => token!(2, Token::CmpEq),
+                _ => token!(1, Token::Assign)
             },
-            '<' => match lookahead!(1) {
-                '<' => match lookahead!(2) {
-                    '=' => emit!(3, Token::LShiftAssign),
-                    _ => emit!(2, Token::LShift)
+            '<' => match peek!(1) {
+                '<' => match peek!(2) {
+                    '=' => token!(3, Token::LShiftAssign),
+                    _ => token!(2, Token::LShift)
                 },
-                '=' => emit!(2, Token::CmpLte),
-                _ => emit!(1, Token::CmpLt)
+                '=' => token!(2, Token::CmpLte),
+                _ => token!(1, Token::CmpLt)
             },
-            '>' => match lookahead!(1) {
-                '>' => match lookahead!(2) {
-                    '=' => emit!(3, Token::RShiftAssign),
-                    _ => emit!(2, Token::RShift)
+            '>' => match peek!(1) {
+                '>' => match peek!(2) {
+                    '=' => token!(3, Token::RShiftAssign),
+                    _ => token!(2, Token::RShift)
                 },
-                '=' => emit!(2, Token::CmpGte),
-                _ => emit!(1, Token::CmpGt)
+                '=' => token!(2, Token::CmpGte),
+                _ => token!(1, Token::CmpGt)
             },
-            '/' => match lookahead!(1) {
+            '/' => match peek!(1) {
                 '/' => {
                     // C++-style comment
                     loop {
-                        skip!();
-                        if peek!() == '\n' { break }
+                        next!();
+                        if peek!(0) == '\n' || peek!(0) == '\0' { break }
                     }
                 }
                 '*' => {
                     // C-style comment
                     loop {
-                        skip!();
-                        if peek!() == '*' && lookahead!(1) == '/' { skip!(); skip!(); break }
+                        next!();
+                        if peek!(0) == '\0' {
+                            error!("Unterminated comment. Expected: */".to_string());
+                        }
+                        if peek!(0) == '*' && peek!(1) == '/' { next!(); next!(); break }
                     }
                 },
-                '=' => emit!(2, Token::DivAssign),
-                _ => emit!(1, Token::Slash)
+                '=' => token!(2, Token::DivAssign),
+                _ => token!(1, Token::Slash)
             },
-            '!' => match lookahead!(1) {
-                '=' => emit!(2, Token::CmpNeq),
-                _ => emit!(1, Token::Exclamation)
+            '!' => match peek!(1) {
+                '=' => token!(2, Token::CmpNeq),
+                _ => token!(1, Token::Exclamation)
             },
             ' ' | '\t' | '\n' | '\r' => {
                 // ignore
-                skip!();
+                next!();
                 last_tok_needs_space = false;
             },
             '\'' => {
-                if lookahead!(2) != '\'' && (lookahead!(1).is_alphabetic() || lookahead!(1) == '_') {
+                if peek!(2) != '\'' && (peek!(1).is_alphabetic() || peek!(1) == '_') {
                     expect!('\'');
                     let tok_end = i.as_str()
                                    .find(|c: char| !c.is_alphanumeric() && c != '_')
                                    .unwrap_or(i.as_str().len());
                     let tok = i.as_str().get(0..tok_end).unwrap();
 
-                    emit_antisocial!(tok.len(), Token::JumpLabel(tok));
-                } else if lookahead!(1).is_ascii() && lookahead!(2) == '\'' {
-                    emit_antisocial!(3, Token::LiteralInt(lookahead!(1) as i32, LiteralIntType::U8));
+                    antisocial_token!(tok.len(), Token::JumpLabel(tok));
+                } else if peek!(1).is_ascii() && peek!(2) == '\'' {
+                    antisocial_token!(3, Token::LiteralInt(peek!(1) as i32, LiteralIntType::U8));
                 } else {
                     error!("Unexpected '".to_string());
                 }
             },
             '`' => {
-                skip!(); // starting `
+                next!(); // starting `
                 if let Some(len) = i.as_str().find(|c: char| c == '`') {
                     let asm = i.as_str().get(0..len).unwrap();
-                    emit_antisocial!(asm.len(), Token::Asm(asm));
-                    skip!(); // terminating `
+                    antisocial_token!(asm.len(), Token::Asm(asm));
+                    next!(); // terminating `
                 } else {
                     error!("Unterminated asm literal".to_string());
                 }
@@ -374,11 +352,11 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                 if last_tok_needs_space {
                     error!("Unexpected token '\"'".to_string());
                 } else {
-                    skip!(); // terminating "
+                    next!(); // terminating "
                     if let Some(len) = i.as_str().find(|c: char| c == '"') {
                         let tok = i.as_str().get(0..len).unwrap();
-                        emit_antisocial!(tok.len(), Token::LiteralStr(tok));
-                        skip!(); // terminating "
+                        antisocial_token!(tok.len(), Token::LiteralStr(tok));
+                        next!(); // terminating "
                     } else {
                         error!("Unterminated string literal".to_string());
                     }
@@ -387,37 +365,35 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
             '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
                 let mut val: i32 = 0;
 
-                if peek!() == '0' && lookahead!(1) == 'x' {
+                macro_rules! read_int {
+                    ($radix: expr) => {
+                        loop {
+                            if peek!(0) == '_' {
+                                next!();
+                                continue;
+                            }
+                            match peek!(0).to_digit($radix) {
+                                Some(n) => val = val * $radix + n as i32,
+                                None => break
+                            }
+                            next!();
+                        }
+                    };
+                }
+
+                if peek!(0) == '0' && peek!(1) == 'x' {
                     /* Hex */
-                    skip!();
-                    skip!();
-                    loop {
-                        match peek!().to_digit(16) {
-                            Some(n) => val = val * 16 + n as i32,
-                            None => break
-                        }
-                        skip!();
-                    }
-                } else if peek!() == '0' && lookahead!(1) == 'b' {
+                    expect!('0');
+                    expect!('x');
+                    read_int!(16);
+                } else if peek!(0) == '0' && peek!(1) == 'b' {
                     /* Bin */
-                    skip!();
-                    skip!();
-                    loop {
-                        match peek!().to_digit(2) {
-                            Some(n) => val = val * 2 + n as i32,
-                            None => break
-                        }
-                        skip!();
-                    }
+                    expect!('0');
+                    expect!('b');
+                    read_int!(2);
                 } else {
                     /* Dec */
-                    loop {
-                        match peek!().to_digit(10) {
-                            Some(n) => val = val * 10 + n as i32,
-                            None => break
-                        }
-                        skip!();
-                    }
+                    read_int!(10);
                 }
                 let int_type = match i.read_identifier() {
                     None => LiteralIntType::Unknown,
@@ -427,29 +403,29 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                     Some("i16") => LiteralIntType::I16,
                     Some(suffix) => error!(format!("Invalid integer suffix: '{}'", suffix))
                 };
-                emit_antisocial!(0, Token::LiteralInt(val, int_type));
+                antisocial_token!(0, Token::LiteralInt(val, int_type));
             },
             other => {
                 if !last_tok_needs_space && (other == '_' || other.is_alphabetic()) {
                     let tok = i.read_identifier().unwrap();
 
                     match tok {
-                        "fn" => emit_antisocial!(0, Token::Func),
-                        "var" => emit_antisocial!(0, Token::Var),
-                        "const" => emit_antisocial!(0, Token::Const),
-                        "break" => emit_antisocial!(0, Token::Break),
-                        "continue" => emit_antisocial!(0, Token::Continue),
-                        "struct" => emit_antisocial!(0, Token::Struct),
-                        "while" => emit_antisocial!(0, Token::While),
-                        "loop" => emit_antisocial!(0, Token::Loop),
-                        "for" => emit_antisocial!(0, Token::For),
-                        "as" => emit_antisocial!(0, Token::As),
-                        "if" => emit_antisocial!(0, Token::If),
-                        "else" => emit_antisocial!(0, Token::Else),
-                        "return" => emit_antisocial!(0, Token::Return),
-                        "true" => emit_antisocial!(0, Token::LiteralBool(true)),
-                        "false" => emit_antisocial!(0, Token::LiteralBool(false)),
-                        other => emit_antisocial!(0, Token::Ident(other)),
+                        "fn" => antisocial_token!(0, Token::Func),
+                        "var" => antisocial_token!(0, Token::Var),
+                        "const" => antisocial_token!(0, Token::Const),
+                        "break" => antisocial_token!(0, Token::Break),
+                        "continue" => antisocial_token!(0, Token::Continue),
+                        "struct" => antisocial_token!(0, Token::Struct),
+                        "while" => antisocial_token!(0, Token::While),
+                        "loop" => antisocial_token!(0, Token::Loop),
+                        "for" => antisocial_token!(0, Token::For),
+                        "as" => antisocial_token!(0, Token::As),
+                        "if" => antisocial_token!(0, Token::If),
+                        "else" => antisocial_token!(0, Token::Else),
+                        "return" => antisocial_token!(0, Token::Return),
+                        "true" => antisocial_token!(0, Token::LiteralBool(true)),
+                        "false" => antisocial_token!(0, Token::LiteralBool(false)),
+                        other => antisocial_token!(0, Token::Ident(other)),
                     }
 
                 } else {
@@ -473,7 +449,7 @@ mod tests {
                 &=|=^= > >= >> >>= `xor b\n\
                 and c` \"hello\n\
                 world\" true false 'my_label '_other 'x'\n\
-                123456 0xcAfe 0b101010 0xbabau16 54i8 0u8 0xffei16", filename),
+                12_3456 0xcAfe 0b101010 0xbabau16 54i8 0u8 0xffe_i16", filename),
             Ok(vec![
                 TokenLoc { token: Token::LBrace, line: 1, col: 1, filename },
                 TokenLoc { token: Token::RBrace, line: 1, col: 2, filename },
@@ -542,12 +518,12 @@ mod tests {
                 TokenLoc { token: Token::JumpLabel(&"_other"), line: 6, col: 29, filename },
                 TokenLoc { token: Token::LiteralInt(120, LiteralIntType::U8), line: 6, col: 37, filename },
                 TokenLoc { token: Token::LiteralInt(123456, LiteralIntType::Unknown), line: 7, col: 1, filename },
-                TokenLoc { token: Token::LiteralInt(0xcafe, LiteralIntType::Unknown), line: 7, col: 8, filename },
-                TokenLoc { token: Token::LiteralInt(0b101010, LiteralIntType::Unknown), line: 7, col: 15, filename },
-                TokenLoc { token: Token::LiteralInt(0xbaba, LiteralIntType::U16), line: 7, col: 24, filename },
-                TokenLoc { token: Token::LiteralInt(54, LiteralIntType::I8), line: 7, col: 34, filename },
-                TokenLoc { token: Token::LiteralInt(0, LiteralIntType::U8), line: 7, col: 39, filename },
-                TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntType::I16), line: 7, col: 43, filename },
+                TokenLoc { token: Token::LiteralInt(0xcafe, LiteralIntType::Unknown), line: 7, col: 9, filename },
+                TokenLoc { token: Token::LiteralInt(0b101010, LiteralIntType::Unknown), line: 7, col: 16, filename },
+                TokenLoc { token: Token::LiteralInt(0xbaba, LiteralIntType::U16), line: 7, col: 25, filename },
+                TokenLoc { token: Token::LiteralInt(54, LiteralIntType::I8), line: 7, col: 35, filename },
+                TokenLoc { token: Token::LiteralInt(0, LiteralIntType::U8), line: 7, col: 40, filename },
+                TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntType::I16), line: 7, col: 44, filename },
             ])
         );
     }
@@ -588,6 +564,22 @@ mod tests {
             Err(CompileError {
                 loc: TokenLoc { token: Token::Unknown, line: 1, col: 1, filename },
                 msg: "Invalid integer suffix: 'u42'".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn unterminated_comment() {
+        let filename = "test.li";
+        assert_eq!(
+            lex("// hey", filename),
+            Ok(vec![])
+        );
+        assert_eq!(
+            lex("/* hey", filename),
+            Err(CompileError {
+                loc: TokenLoc { token: Token::Unknown, line: 1, col: 1, filename },
+                msg: "Unterminated comment. Expected: */".to_string()
             })
         );
     }
