@@ -1,17 +1,21 @@
-mod source_resolver;
-mod lex;
-mod parser;
+mod ast;
 mod error;
-mod types;
+mod lex;
 mod namespace;
+mod parser;
+mod source_resolver;
+mod types;
 
 use source_resolver::Sources;
 use typed_arena::Arena;
 
+pub type Ctx<'ctx> = &'ctx Context<'ctx>;
+
 pub struct Context<'ctx> {
     pub sources: Sources,
-    pub type_arena: Arena<types::Type<'ctx>>,
-    pub symbol_arena: Arena<namespace::Symbol<'ctx>>,
+    type_arena: Arena<types::Type<'ctx>>,
+    symbol_arena: Arena<namespace::Symbol<'ctx>>,
+    astnode_arena: Arena<ast::AstNode<'ctx>>,
 }
 
 impl<'ctx> Context<'ctx> {
@@ -20,7 +24,23 @@ impl<'ctx> Context<'ctx> {
             sources: Sources::new(),
             type_arena: Arena::new(),
             symbol_arena: Arena::new(),
+            astnode_arena: Arena::new(),
         }
+    }
+
+    pub fn alloc_type(self: &'ctx Self, t: types::Type<'ctx>) -> &'ctx mut types::Type<'ctx> {
+        self.type_arena.alloc(t)
+    }
+
+    pub fn alloc_symbol(
+        self: &'ctx Self,
+        s: namespace::Symbol<'ctx>,
+    ) -> &'ctx mut namespace::Symbol<'ctx> {
+        self.symbol_arena.alloc(s)
+    }
+
+    pub fn alloc_astnode(self: &'ctx Self, n: ast::AstNode<'ctx>) -> &'ctx mut ast::AstNode<'ctx> {
+        self.astnode_arena.alloc(n)
     }
 }
 
@@ -32,6 +52,9 @@ fn main() {
     if args.len() < 2 {
         eprintln!("Usage: ./lic [--noemit] [--llvm] <input.li>");
     } else {
-        parser::parse_file(&context, args[1].as_str());
+        match parser::parse_file(&context, args[1].as_str()) {
+            Ok(()) => {}
+            Err(e) => crate::error::fatal_error(&e),
+        }
     }
 }

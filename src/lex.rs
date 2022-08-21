@@ -1,7 +1,7 @@
-use crate::source_resolver::Sources;
 use crate::error::CompileError;
+use crate::Ctx;
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum LiteralIntType {
     Unknown,
     U8,
@@ -10,8 +10,9 @@ pub enum LiteralIntType {
     I16,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Token<'a> {
+    EOF,
     Unknown,
     LBrace,
     RBrace,
@@ -74,20 +75,23 @@ pub enum Token<'a> {
     RArrow,
     While,
     Loop,
-    For
+    For,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TokenLoc<'a> {
     pub token: Token<'a>,
     pub line: i32,
     pub col: i32,
-    pub filename: &'a str
+    pub filename: &'a str,
 }
 
-pub fn lex_file<'ctx, 'a>(sources: &'ctx Sources, filename: &'a str) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
+pub fn lex_file<'ctx, 'a>(
+    context: Ctx<'ctx>,
+    filename: &'a str,
+) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
     // Get 'ctx scoped file contents and filename
-    let (_filename, buf) = sources.get_src(filename);
+    let (_filename, buf) = context.sources.get_src(filename);
     lex(buf, _filename)
 }
 
@@ -95,25 +99,31 @@ pub fn lex_file<'ctx, 'a>(sources: &'ctx Sources, filename: &'a str) -> Result<V
 struct LocStrIter<'a> {
     pub line: i32,
     pub col: i32,
-    i: std::str::Chars<'a>
+    i: std::str::Chars<'a>,
 }
 
 impl<'a> LocStrIter<'a> {
     fn from_str(s: &'a str) -> Self {
-        LocStrIter { line: 1, col: 1, i: s.chars() }
+        LocStrIter {
+            line: 1,
+            col: 1,
+            i: s.chars(),
+        }
     }
     fn as_str(&self) -> &'a str {
         self.i.as_str()
     }
     fn read_identifier(&mut self) -> Option<&'a str> {
-        let tok_end = self.i.as_str()
-                       .find(|c: char| !c.is_alphanumeric() && c != '_')
-                       .unwrap_or(self.i.as_str().len());
+        let tok_end = self
+            .i
+            .as_str()
+            .find(|c: char| !c.is_alphanumeric() && c != '_')
+            .unwrap_or(self.i.as_str().len());
         if tok_end == 0 {
             None
         } else {
             let tok = self.i.as_str().get(0..tok_end).unwrap();
-            self.nth(tok_end-1);
+            self.nth(tok_end - 1);
             Some(tok)
         }
     }
@@ -132,12 +142,15 @@ impl<'a> Iterator for LocStrIter<'a> {
                 }
                 Some(c)
             }
-            None => None
+            None => None,
         }
     }
 }
 
-pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
+pub fn lex<'ctx>(
+    buf: &'ctx str,
+    filename: &'ctx str,
+) -> Result<Vec<TokenLoc<'ctx>>, CompileError<'ctx>> {
     let mut tokens: Vec<TokenLoc> = Vec::new();
 
     // can't have unseparated literals (like 123"hello")
@@ -147,7 +160,6 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
 
     let mut i = LocStrIter::from_str(buf);
 
-    println!("len {}", buf.len());
     'outer: loop {
         macro_rules! next {
             () => {
@@ -170,39 +182,35 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
         }
 
         macro_rules! token {
-            ($n: expr, $a: expr) => {
-                {
-                    tokens.push(TokenLoc {
-                        line: tok_line,
-                        col: tok_col,
-                        filename,
-                        token: $a,
-                    });
-                    for _ in 0..$n {
-                        next!();
-                    }
-                    last_tok_needs_space = false;
+            ($n: expr, $a: expr) => {{
+                tokens.push(TokenLoc {
+                    line: tok_line,
+                    col: tok_col,
+                    filename,
+                    token: $a,
+                });
+                for _ in 0..$n {
+                    next!();
                 }
-            };
+                last_tok_needs_space = false;
+            }};
         }
 
         /* Emit a token that needs to be separated from other anti-social tokens
          * (by whitespace or non-antisocial tokens) */
         macro_rules! antisocial_token {
-            ($n: expr, $a: expr) => {
-                {
-                    tokens.push(TokenLoc {
-                        line: tok_line,
-                        col: tok_col,
-                        filename,
-                        token: $a,
-                    });
-                    for _ in 0..$n {
-                        next!();
-                    }
-                    last_tok_needs_space = true;
+            ($n: expr, $a: expr) => {{
+                tokens.push(TokenLoc {
+                    line: tok_line,
+                    col: tok_col,
+                    filename,
+                    token: $a,
+                });
+                for _ in 0..$n {
+                    next!();
                 }
-            };
+                last_tok_needs_space = true;
+            }};
         }
 
         macro_rules! error {
@@ -214,7 +222,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         col: tok_col,
                         filename,
                     },
-                    msg: $msg
+                    msg: $msg,
                 })
             };
         }
@@ -267,38 +275,40 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
             },
             '*' => match peek!(1) {
                 '=' => token!(2, Token::MulAssign),
-                _ => token!(1, Token::Asterisk)
+                _ => token!(1, Token::Asterisk),
             },
             '%' => match peek!(1) {
                 '=' => token!(2, Token::ModAssign),
-                _ => token!(1, Token::Percent)
+                _ => token!(1, Token::Percent),
             },
             '=' => match peek!(1) {
                 '=' => token!(2, Token::CmpEq),
-                _ => token!(1, Token::Assign)
+                _ => token!(1, Token::Assign),
             },
             '<' => match peek!(1) {
                 '<' => match peek!(2) {
                     '=' => token!(3, Token::LShiftAssign),
-                    _ => token!(2, Token::LShift)
+                    _ => token!(2, Token::LShift),
                 },
                 '=' => token!(2, Token::CmpLte),
-                _ => token!(1, Token::CmpLt)
+                _ => token!(1, Token::CmpLt),
             },
             '>' => match peek!(1) {
                 '>' => match peek!(2) {
                     '=' => token!(3, Token::RShiftAssign),
-                    _ => token!(2, Token::RShift)
+                    _ => token!(2, Token::RShift),
                 },
                 '=' => token!(2, Token::CmpGte),
-                _ => token!(1, Token::CmpGt)
+                _ => token!(1, Token::CmpGt),
             },
             '/' => match peek!(1) {
                 '/' => {
                     // C++-style comment
                     loop {
                         next!();
-                        if peek!(0) == '\n' || peek!(0) == '\0' { break }
+                        if peek!(0) == '\n' || peek!(0) == '\0' {
+                            break;
+                        }
                     }
                 }
                 '*' => {
@@ -308,27 +318,32 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         if peek!(0) == '\0' {
                             error!("Unterminated comment. Expected: */".to_string());
                         }
-                        if peek!(0) == '*' && peek!(1) == '/' { next!(); next!(); break }
+                        if peek!(0) == '*' && peek!(1) == '/' {
+                            next!();
+                            next!();
+                            break;
+                        }
                     }
-                },
+                }
                 '=' => token!(2, Token::DivAssign),
-                _ => token!(1, Token::Slash)
+                _ => token!(1, Token::Slash),
             },
             '!' => match peek!(1) {
                 '=' => token!(2, Token::CmpNeq),
-                _ => token!(1, Token::Exclamation)
+                _ => token!(1, Token::Exclamation),
             },
             ' ' | '\t' | '\n' | '\r' => {
                 // ignore
                 next!();
                 last_tok_needs_space = false;
-            },
+            }
             '\'' => {
                 if peek!(2) != '\'' && (peek!(1).is_alphabetic() || peek!(1) == '_') {
                     expect!('\'');
-                    let tok_end = i.as_str()
-                                   .find(|c: char| !c.is_alphanumeric() && c != '_')
-                                   .unwrap_or(i.as_str().len());
+                    let tok_end = i
+                        .as_str()
+                        .find(|c: char| !c.is_alphanumeric() && c != '_')
+                        .unwrap_or(i.as_str().len());
                     let tok = i.as_str().get(0..tok_end).unwrap();
 
                     antisocial_token!(tok.len(), Token::JumpLabel(tok));
@@ -337,7 +352,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                 } else {
                     error!("Unexpected '".to_string());
                 }
-            },
+            }
             '`' => {
                 next!(); // starting `
                 if let Some(len) = i.as_str().find(|c: char| c == '`') {
@@ -347,7 +362,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                 } else {
                     error!("Unterminated asm literal".to_string());
                 }
-            },
+            }
             '"' => {
                 if last_tok_needs_space {
                     error!("Unexpected token '\"'".to_string());
@@ -361,7 +376,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         error!("Unterminated string literal".to_string());
                     }
                 }
-            },
+            }
             '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
                 let mut val: i32 = 0;
 
@@ -374,7 +389,7 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                             }
                             match peek!(0).to_digit($radix) {
                                 Some(n) => val = val * $radix + n as i32,
-                                None => break
+                                None => break,
                             }
                             next!();
                         }
@@ -401,10 +416,10 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                     Some("i8") => LiteralIntType::I8,
                     Some("u16") => LiteralIntType::U16,
                     Some("i16") => LiteralIntType::I16,
-                    Some(suffix) => error!(format!("Invalid integer suffix: '{}'", suffix))
+                    Some(suffix) => error!(format!("Invalid integer suffix: '{}'", suffix)),
                 };
                 antisocial_token!(0, Token::LiteralInt(val, int_type));
-            },
+            }
             other => {
                 if !last_tok_needs_space && (other == '_' || other.is_alphabetic()) {
                     let tok = i.read_identifier().unwrap();
@@ -427,13 +442,20 @@ pub fn lex<'ctx>(buf: &'ctx str, filename: &'ctx str) -> Result<Vec<TokenLoc<'ct
                         "false" => antisocial_token!(0, Token::LiteralBool(false)),
                         other => antisocial_token!(0, Token::Ident(other)),
                     }
-
                 } else {
                     error!(format!("Unexpected token '{}'", other));
                 }
             }
         };
     }
+
+    tokens.push(TokenLoc {
+        line: tok_line,
+        col: tok_col,
+        filename,
+        token: Token::EOF,
+    });
+
     Ok(tokens)
 }
 
@@ -524,6 +546,7 @@ mod tests {
                 TokenLoc { token: Token::LiteralInt(54, LiteralIntType::I8), line: 7, col: 35, filename },
                 TokenLoc { token: Token::LiteralInt(0, LiteralIntType::U8), line: 7, col: 40, filename },
                 TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntType::I16), line: 7, col: 44, filename },
+                TokenLoc { token: Token::EOF, line: 7, col: 53, filename },
             ])
         );
     }
@@ -534,12 +557,48 @@ mod tests {
         assert_eq!(
             lex("  {\r\n    {}\n  }\n\t{}", filename),
             Ok(vec![
-                TokenLoc { token: Token::LBrace, line: 1, col: 3, filename },
-                TokenLoc { token: Token::LBrace, line: 2, col: 5, filename },
-                TokenLoc { token: Token::RBrace, line: 2, col: 6, filename },
-                TokenLoc { token: Token::RBrace, line: 3, col: 3, filename },
-                TokenLoc { token: Token::LBrace, line: 4, col: 2, filename },
-                TokenLoc { token: Token::RBrace, line: 4, col: 3, filename },
+                TokenLoc {
+                    token: Token::LBrace,
+                    line: 1,
+                    col: 3,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::LBrace,
+                    line: 2,
+                    col: 5,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::RBrace,
+                    line: 2,
+                    col: 6,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::RBrace,
+                    line: 3,
+                    col: 3,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::LBrace,
+                    line: 4,
+                    col: 2,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::RBrace,
+                    line: 4,
+                    col: 3,
+                    filename
+                },
+                TokenLoc {
+                    token: Token::EOF,
+                    line: 4,
+                    col: 4,
+                    filename
+                },
             ])
         );
     }
@@ -550,7 +609,12 @@ mod tests {
         assert_eq!(
             lex(" `ld blah  ", filename),
             Err(CompileError {
-                loc: TokenLoc { token: Token::Unknown, line: 1, col: 2, filename },
+                loc: TokenLoc {
+                    token: Token::Unknown,
+                    line: 1,
+                    col: 2,
+                    filename
+                },
                 msg: "Unterminated asm literal".to_string()
             })
         );
@@ -562,7 +626,12 @@ mod tests {
         assert_eq!(
             lex("10u42", filename),
             Err(CompileError {
-                loc: TokenLoc { token: Token::Unknown, line: 1, col: 1, filename },
+                loc: TokenLoc {
+                    token: Token::Unknown,
+                    line: 1,
+                    col: 1,
+                    filename
+                },
                 msg: "Invalid integer suffix: 'u42'".to_string()
             })
         );
@@ -573,12 +642,22 @@ mod tests {
         let filename = "test.li";
         assert_eq!(
             lex("// hey", filename),
-            Ok(vec![])
+            Ok(vec![TokenLoc {
+                token: Token::EOF,
+                line: 1,
+                col: 7,
+                filename
+            },])
         );
         assert_eq!(
             lex("/* hey", filename),
             Err(CompileError {
-                loc: TokenLoc { token: Token::Unknown, line: 1, col: 1, filename },
+                loc: TokenLoc {
+                    token: Token::Unknown,
+                    line: 1,
+                    col: 1,
+                    filename
+                },
                 msg: "Unterminated comment. Expected: */".to_string()
             })
         );
