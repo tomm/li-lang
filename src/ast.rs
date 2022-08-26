@@ -1,4 +1,4 @@
-use crate::lex::TokenLoc;
+use crate::lex::{LiteralIntTokenType, TokenLoc};
 use crate::types::Type;
 use std::cell::Cell;
 
@@ -75,6 +75,28 @@ impl<'ctx> AstNode<'ctx> {
                 }
             }
             AstNodeType::ExprVoidLiteral => println!("void literal"),
+            AstNodeType::ExprBoolLiteral(v) => println!("bool ({})", v),
+            AstNodeType::ExprIntLiteral(v, t) => println!("integer ({}, {:?})", v, t),
+            AstNodeType::ExprStrLiteral(s) => println!("string (\"{}\")", s),
+            AstNodeType::ExprArrayLiteral(a) => {
+                println!("array literal ({} items)", a.len());
+                for n in a {
+                    n.pretty_print(indent + 1);
+                }
+            }
+            AstNodeType::ExprReturn(v) => {
+                println!("return");
+                v.pretty_print(indent + 1);
+            }
+            AstNodeType::ExprGoto {
+                is_continue, label, ..
+            } => {
+                println!(
+                    "{} (label {})",
+                    if *is_continue { "continue" } else { "break" },
+                    label.unwrap_or("<none>")
+                );
+            }
             AstNodeType::ExprLocalScope {
                 var_name,
                 var_type,
@@ -140,14 +162,68 @@ impl<'ctx> AstNode<'ctx> {
 }
 
 #[derive(Debug)]
-pub enum BinOp {
+pub enum Op {
+    Add,
+    Sub,
+    BitAnd,
+    BitOr,
+    BitXor,
+    LogicalAnd,
+    LogicalOr,
+    Mul,
+    Div,
+    Modulo,
     Assign,
+    PlusAssign,
+    MinusAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    LShiftAssign,
+    RShiftAssign,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Lte,
+    Gtr,
+    LShift,
+    RShift,
+    ArrayIndexing,
+    UnaryNeg,
+    UnaryAddressOf,
+    UnaryDeref,
+    UnaryBitNot,
+    UnaryLogicalNot,
 }
 
 #[derive(Debug)]
 pub struct AstFnArg<'ctx> {
     pub name: &'ctx str,
     pub type_: TypeSpecifier<'ctx>,
+}
+
+#[derive(Debug)]
+pub enum LiteralIntExprType {
+    U8,
+    U16,
+    I8,
+    I16,
+    ANY,
+}
+impl LiteralIntExprType {
+    pub fn from_literal_int_token_type(t: LiteralIntTokenType) -> Self {
+        match t {
+            LiteralIntTokenType::Unknown => LiteralIntExprType::ANY,
+            LiteralIntTokenType::U8 => LiteralIntExprType::U8,
+            LiteralIntTokenType::I8 => LiteralIntExprType::I8,
+            LiteralIntTokenType::U16 => LiteralIntExprType::U16,
+            LiteralIntTokenType::I16 => LiteralIntExprType::I16,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -180,16 +256,26 @@ pub enum AstNodeType<'ctx> {
     Asm(&'ctx str),
     ExprList(Vec<AstNodeRef<'ctx>>),
     ExprVoidLiteral,
+    ExprBoolLiteral(bool),
+    ExprIntLiteral(i32, LiteralIntExprType),
+    ExprStrLiteral(&'ctx str),
+    ExprArrayLiteral(Vec<AstNodeRef<'ctx>>),
+    ExprReturn(AstNodeRef<'ctx>),
+    ExprGoto {
+        is_continue: bool, // otherwise is break
+        label: Option<&'ctx str>,
+        target: Cell<Option<AstNodeRef<'ctx>>>, // resolved in second pass
+    },
     ExprLocalScope {
         var_name: &'ctx str,
         var_type: Option<TypeSpecifier<'ctx>>,
-        value: Option<AstNodeRef<'ctx>>, // a BinOp::Assign is inserted in scoped_expr, so this is
+        value: Option<AstNodeRef<'ctx>>, // a Op::Assign is inserted in scoped_expr, so this is
         // not used except for type inference
         scoped_expr: AstNodeRef<'ctx>,
     },
     ExprIdent(&'ctx str),
     ExprBinop {
-        op: BinOp,
+        op: Op,
         args: [AstNodeRef<'ctx>; 2],
     },
     ExprLoop {

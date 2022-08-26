@@ -1,7 +1,11 @@
-use crate::ast::{AstFnArg, AstNode, AstNodeMutRef, AstNodeRef, AstNodeType, BinOp, TypeSpecifier};
+use crate::ast::{
+    AstFnArg, AstNode, AstNodeMutRef, AstNodeRef, AstNodeType, LiteralIntExprType, Op,
+    TypeSpecifier,
+};
 use crate::error::CompileError;
-use crate::lex::{lex_file, Token, TokenLoc};
+use crate::lex::{lex_file, LiteralIntTokenType, Token, TokenLoc};
 use crate::Ctx;
+use std::cell::Cell;
 
 macro_rules! error {
     ($loc: expr, $msg: expr) => {
@@ -33,8 +37,12 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
         self.toks.peek().unwrap()
     }
 
-    fn new_node(self: &mut Self, node: AstNode<'ctx>) -> AstNodeMutRef<'ctx> {
-        self.context.alloc_astnode(node)
+    fn new_node(
+        self: &mut Self,
+        loc: TokenLoc<'ctx>,
+        node_type: AstNodeType<'ctx>,
+    ) -> AstNodeMutRef<'ctx> {
+        self.context.alloc_astnode(AstNode::new(loc, node_type))
     }
 
     #[must_use]
@@ -70,7 +78,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
         let t = self.toks.next().unwrap();
         match t.token {
             Token::Asm(asm_text) | Token::LiteralStr(asm_text) => {
-                Ok(self.new_node(AstNode::new(*t, AstNodeType::Asm(asm_text))))
+                Ok(self.new_node(*t, AstNodeType::Asm(asm_text)))
             }
             _ => panic!(),
         }
@@ -106,7 +114,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
             }
         }
 
-        Ok(self.new_node(AstNode::new(start, AstNodeType::Module(top_level_nodes))))
+        Ok(self.new_node(start, AstNodeType::Module(top_level_nodes)))
     }
 
     fn parse_function(self: &mut Self) -> ParseOne<'ctx> {
@@ -150,7 +158,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 Some(_body)
             };
 
-            Ok(self.new_node(AstNode::new(
+            Ok(self.new_node(
                 *t,
                 AstNodeType::Func {
                     name: fn_name,
@@ -158,7 +166,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                     ret,
                     body,
                 },
-            )))
+            ))
         } else {
             error!(*t, "Expected function name".to_string());
         }
@@ -184,14 +192,14 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                     _ => None,
                 };
 
-                defs.push(self.new_node(AstNode::new(
+                defs.push(self.new_node(
                     *ident,
                     AstNodeType::StaticVar {
                         name,
                         is_const,
                         typespec,
                     },
-                )));
+                ));
             } else {
                 error!(*ident, "Expected variable name".to_string());
             }
@@ -258,10 +266,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
         }
         self.chomp(Token::RBrace)?;
 
-        Ok(self.new_node(AstNode::new(
-            start,
-            AstNodeType::StructDecl { name, members },
-        )))
+        Ok(self.new_node(start, AstNodeType::StructDecl { name, members }))
     }
 
     fn parse_list_expression(self: &mut Self, terminator: Token) -> ParseOne<'ctx> {
@@ -275,10 +280,10 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
         }
 
         if is_void && exprs.len() > 0 {
-            exprs.push(self.new_node(AstNode::new(start, AstNodeType::ExprVoidLiteral)));
+            exprs.push(self.new_node(start, AstNodeType::ExprVoidLiteral));
         }
 
-        Ok(self.new_node(AstNode::new(start, AstNodeType::ExprList(exprs))))
+        Ok(self.new_node(start, AstNodeType::ExprList(exprs)))
     }
 
     /* Parse variable declarations in the form:
@@ -331,7 +336,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
             if let Some(initval) = initval {
                 expr = self.insert_assignment(expr, start_token, name, initval);
             }
-            expr = self.new_node(AstNode::new(
+            expr = self.new_node(
                 start_token,
                 AstNodeType::ExprLocalScope {
                     var_name: name,
@@ -339,7 +344,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                     value: initval,
                     scoped_expr: expr,
                 },
-            ));
+            );
         }
 
         expr
@@ -364,8 +369,48 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
     }
 
     fn parse_assignment_expression(self: &mut Self) -> ParseOne<'ctx> {
-        self.parse_conditional_expression()
-        // TODO
+        let n = self.parse_conditional_expression()?;
+        let start = *self.peek();
+
+        match start.token {
+            Token::Assign
+            | Token::MulAssign
+            | Token::DivAssign
+            | Token::ModAssign
+            | Token::LShiftAssign
+            | Token::RShiftAssign
+            | Token::BitAndAssign
+            | Token::BitOrAssign
+            | Token::BitXorAssign
+            | Token::PlusAssign
+            | Token::MinusAssign => {
+                self.toks.next();
+                let arg1 = n;
+                let arg2 = self.parse_assignment_expression()?;
+
+                Ok(self.new_node(
+                    start,
+                    AstNodeType::ExprBinop {
+                        op: match start.token {
+                            Token::Assign => Op::Assign,
+                            Token::MulAssign => Op::MulAssign,
+                            Token::DivAssign => Op::DivAssign,
+                            Token::ModAssign => Op::ModAssign,
+                            Token::LShiftAssign => Op::LShiftAssign,
+                            Token::RShiftAssign => Op::RShiftAssign,
+                            Token::BitAndAssign => Op::BitAndAssign,
+                            Token::BitOrAssign => Op::BitOrAssign,
+                            Token::BitXorAssign => Op::BitXorAssign,
+                            Token::PlusAssign => Op::PlusAssign,
+                            Token::MinusAssign => Op::MinusAssign,
+                            _ => panic!(),
+                        },
+                        args: [arg1, arg2],
+                    },
+                ))
+            }
+            _ => Ok(n),
+        }
     }
 
     fn parse_conditional_expression(self: &mut Self) -> ParseOne<'ctx> {
@@ -402,7 +447,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 let body = self.parse_expression()?;
                 self.chomp(Token::RBrace)?;
 
-                Ok(self.new_node(AstNode::new(
+                Ok(self.new_node(
                     start,
                     AstNodeType::ExprLoop {
                         label,
@@ -410,7 +455,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                         body,
                         on_next_iter: None,
                     },
-                )))
+                ))
             }
             Token::Loop => {
                 self.toks.next();
@@ -418,7 +463,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 let body = self.parse_expression()?;
                 self.chomp(Token::RBrace)?;
 
-                Ok(self.new_node(AstNode::new(
+                Ok(self.new_node(
                     start,
                     AstNodeType::ExprLoop {
                         label,
@@ -426,7 +471,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                         body,
                         on_next_iter: None,
                     },
-                )))
+                ))
             }
             Token::For => {
                 self.chomp(Token::For)?;
@@ -449,7 +494,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 let body = self.parse_list_expression(Token::RBrace)?;
                 self.chomp(Token::RBrace)?;
 
-                let loop_ = self.new_node(AstNode::new(
+                let loop_ = self.new_node(
                     start,
                     AstNodeType::ExprLoop {
                         label,
@@ -457,7 +502,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                         body,
                         on_next_iter,
                     },
-                ));
+                );
 
                 Ok(self.wrap_expression_in_scopes(start, loop_, var_scopes))
             }
@@ -468,29 +513,108 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 let on_false = if self.maybe_chomp(Token::Else) {
                     self.parse_expression()?
                 } else {
-                    self.new_node(AstNode::new(start, AstNodeType::ExprVoidLiteral))
+                    self.new_node(start, AstNodeType::ExprVoidLiteral)
                 };
 
-                Ok(self.new_node(AstNode::new(
+                Ok(self.new_node(
                     start,
                     AstNodeType::ExprIfElse {
                         condition,
                         on_true,
                         on_false,
                     },
-                )))
+                ))
             }
             _ => self.parse_comparison_expression(),
         }
     }
 
     fn parse_comparison_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_logical_expression()?;
+        Ok(n)
+    }
+
+    fn parse_logical_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_additive_expression()?;
+        Ok(n)
+    }
+
+    fn parse_additive_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_multiplicative_expression()?;
+        Ok(n)
+    }
+
+    fn parse_multiplicative_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_unary_expression()?;
+        Ok(n)
+    }
+
+    fn parse_unary_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_postfix_expression()?;
+        Ok(n)
+    }
+
+    fn parse_postfix_expression(self: &mut Self) -> ParseOne<'ctx> {
+        let n = self.parse_primary_expression()?;
+        Ok(n)
+    }
+
+    fn parse_primary_expression(self: &mut Self) -> ParseOne<'ctx> {
         let t = self.toks.next().unwrap();
 
-        // bullllllshit
         match t.token {
-            Token::Ident(name) => Ok(self.new_node(AstNode::new(*t, AstNodeType::ExprIdent(name)))),
-            tok => error!(*t, format!("WIP unexpected {:?}", tok)),
+            Token::LiteralBool(v) => Ok(self.new_node(*t, AstNodeType::ExprBoolLiteral(v))),
+            Token::LiteralInt(v, int_type) => Ok(self.new_node(
+                *t,
+                AstNodeType::ExprIntLiteral(
+                    v,
+                    LiteralIntExprType::from_literal_int_token_type(int_type),
+                ),
+            )),
+            Token::LiteralStr(s) => Ok(self.new_node(*t, AstNodeType::ExprStrLiteral(s))),
+            Token::Ident(name) => Ok(self.new_node(*t, AstNodeType::ExprIdent(name))),
+            Token::LSqBracket => {
+                let mut contents = vec![];
+                while self.peek().token != Token::RSqBracket {
+                    contents.push(self.parse_expression()?);
+                    if !self.maybe_chomp(Token::Comma) {
+                        break;
+                    }
+                }
+                self.chomp(Token::RSqBracket)?;
+                Ok(self.new_node(*t, AstNodeType::ExprArrayLiteral(contents)))
+            }
+            Token::LBrace => {
+                let n = self.parse_list_expression(Token::RBrace)?;
+                self.chomp(Token::RBrace)?;
+                Ok(n)
+            }
+            Token::Asm(s) => Ok(self.new_node(*t, AstNodeType::Asm(s))),
+            Token::Break | Token::Continue => {
+                let label = match self.peek().token {
+                    Token::JumpLabel(l) => {
+                        self.toks.next();
+                        Some(l)
+                    }
+                    _ => None,
+                };
+                Ok(self.new_node(
+                    *t,
+                    AstNodeType::ExprGoto {
+                        is_continue: t.token == Token::Continue,
+                        label,
+                        target: Cell::new(None),
+                    },
+                ))
+            }
+            Token::Return => {
+                let val = self.parse_expression()?;
+                Ok(self.new_node(*t, AstNodeType::ExprReturn(val)))
+            }
+            tok => error!(
+                *t,
+                format!("Expected primary expression but found {:?}", tok)
+            ),
         }
     }
 
@@ -506,20 +630,17 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
         var_name: &'ctx str,
         value: AstNodeRef<'ctx>,
     ) -> AstNodeRef<'ctx> {
-        let ident_expr = self.new_node(AstNode::new(start, AstNodeType::ExprIdent(var_name)));
+        let ident_expr = self.new_node(start, AstNodeType::ExprIdent(var_name));
 
-        let assignment = self.new_node(AstNode::new(
+        let assignment = self.new_node(
             start,
             AstNodeType::ExprBinop {
-                op: BinOp::Assign,
+                op: Op::Assign,
                 args: [ident_expr, value],
             },
-        ));
+        );
 
-        self.new_node(AstNode::new(
-            start,
-            AstNodeType::ExprList(vec![assignment, scoped_expr]),
-        ))
+        self.new_node(start, AstNodeType::ExprList(vec![assignment, scoped_expr]))
     }
 }
 

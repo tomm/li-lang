@@ -2,7 +2,7 @@ use crate::error::CompileError;
 use crate::Ctx;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum LiteralIntType {
+pub enum LiteralIntTokenType {
     Unknown,
     U8,
     I8,
@@ -69,7 +69,7 @@ pub enum Token<'a> {
     Ident(&'a str),
     JumpLabel(&'a str),
     LiteralStr(&'a str),
-    LiteralInt(i32, LiteralIntType),
+    LiteralInt(i32, LiteralIntTokenType),
     LiteralBool(bool),
     Asm(&'a str),
     RArrow,
@@ -348,7 +348,10 @@ pub fn lex<'ctx>(
 
                     antisocial_token!(tok.len(), Token::JumpLabel(tok));
                 } else if peek!(1).is_ascii() && peek!(2) == '\'' {
-                    antisocial_token!(3, Token::LiteralInt(peek!(1) as i32, LiteralIntType::U8));
+                    antisocial_token!(
+                        3,
+                        Token::LiteralInt(peek!(1) as i32, LiteralIntTokenType::U8)
+                    );
                 } else {
                     error!("Unexpected '".to_string());
                 }
@@ -411,11 +414,11 @@ pub fn lex<'ctx>(
                     read_int!(10);
                 }
                 let int_type = match i.read_identifier() {
-                    None => LiteralIntType::Unknown,
-                    Some("u8") => LiteralIntType::U8,
-                    Some("i8") => LiteralIntType::I8,
-                    Some("u16") => LiteralIntType::U16,
-                    Some("i16") => LiteralIntType::I16,
+                    None => LiteralIntTokenType::Unknown,
+                    Some("u8") => LiteralIntTokenType::U8,
+                    Some("i8") => LiteralIntTokenType::I8,
+                    Some("u16") => LiteralIntTokenType::U16,
+                    Some("i16") => LiteralIntTokenType::I16,
                     Some(suffix) => error!(format!("Invalid integer suffix: '{}'", suffix)),
                 };
                 antisocial_token!(0, Token::LiteralInt(val, int_type));
@@ -538,14 +541,14 @@ mod tests {
                 TokenLoc { token: Token::LiteralBool(false), line: 6, col: 13, filename },
                 TokenLoc { token: Token::JumpLabel(&"my_label"), line: 6, col: 19, filename },
                 TokenLoc { token: Token::JumpLabel(&"_other"), line: 6, col: 29, filename },
-                TokenLoc { token: Token::LiteralInt(120, LiteralIntType::U8), line: 6, col: 37, filename },
-                TokenLoc { token: Token::LiteralInt(123456, LiteralIntType::Unknown), line: 7, col: 1, filename },
-                TokenLoc { token: Token::LiteralInt(0xcafe, LiteralIntType::Unknown), line: 7, col: 9, filename },
-                TokenLoc { token: Token::LiteralInt(0b101010, LiteralIntType::Unknown), line: 7, col: 16, filename },
-                TokenLoc { token: Token::LiteralInt(0xbaba, LiteralIntType::U16), line: 7, col: 25, filename },
-                TokenLoc { token: Token::LiteralInt(54, LiteralIntType::I8), line: 7, col: 35, filename },
-                TokenLoc { token: Token::LiteralInt(0, LiteralIntType::U8), line: 7, col: 40, filename },
-                TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntType::I16), line: 7, col: 44, filename },
+                TokenLoc { token: Token::LiteralInt(120, LiteralIntTokenType::U8), line: 6, col: 37, filename },
+                TokenLoc { token: Token::LiteralInt(123456, LiteralIntTokenType::Unknown), line: 7, col: 1, filename },
+                TokenLoc { token: Token::LiteralInt(0xcafe, LiteralIntTokenType::Unknown), line: 7, col: 9, filename },
+                TokenLoc { token: Token::LiteralInt(0b101010, LiteralIntTokenType::Unknown), line: 7, col: 16, filename },
+                TokenLoc { token: Token::LiteralInt(0xbaba, LiteralIntTokenType::U16), line: 7, col: 25, filename },
+                TokenLoc { token: Token::LiteralInt(54, LiteralIntTokenType::I8), line: 7, col: 35, filename },
+                TokenLoc { token: Token::LiteralInt(0, LiteralIntTokenType::U8), line: 7, col: 40, filename },
+                TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntTokenType::I16), line: 7, col: 44, filename },
                 TokenLoc { token: Token::EOF, line: 7, col: 53, filename },
             ])
         );
