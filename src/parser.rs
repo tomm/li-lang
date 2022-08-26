@@ -550,13 +550,78 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
     }
 
     fn parse_unary_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_postfix_expression()?;
-        Ok(n)
+        let t = *self.peek();
+        match t.token {
+            Token::Minus => {
+                self.chomp(Token::Minus)?;
+                let arg = self.parse_unary_expression()?;
+                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryNeg, arg }))
+            }
+            Token::Tilde => {
+                self.chomp(Token::Tilde)?;
+                let arg = self.parse_unary_expression()?;
+                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryBitNot, arg }))
+            }
+            Token::Exclamation => {
+                self.chomp(Token::Exclamation)?;
+                let arg = self.parse_unary_expression()?;
+                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryLogicalNot, arg }))
+            }
+            _ => Ok(self.parse_postfix_expression()?)
+        }
     }
 
     fn parse_postfix_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_primary_expression()?;
-        Ok(n)
+        let mut n = self.parse_primary_expression()?;
+
+        loop {
+            let t = *self.peek();
+            n = match self.peek().token {
+                Token::LParen => {
+                    let mut args = vec![];
+
+                    self.chomp(Token::LParen)?;
+                    while self.peek().token != Token::RParen {
+                        args.push(self.parse_expression()?);
+                        if !self.maybe_chomp(Token::Comma) {
+                            break;
+                        }
+                    }
+                    self.chomp(Token::RParen)?;
+
+                    self.new_node(t, AstNodeType::ExprCall { callee: n, args })
+                }
+                Token::LSqBracket => {
+                    self.chomp(Token::LSqBracket)?;
+                    let arr = n;
+                    let idx = self.parse_expression()?;
+                    self.chomp(Token::RSqBracket)?;
+
+                    self.new_node(t, AstNodeType::ExprBinop { op: Op::ArrayIndexing, args: [arr, idx] })
+                }
+                Token::Period => {
+                    self.chomp(Token::Period)?;
+                    let struct_expr = n;
+                    let member = self.chomp_ident()?;
+
+                    self.new_node(t, AstNodeType::ExprMemberAccess { struct_expr, member })
+                }
+                Token::Hash => {
+                    self.chomp(Token::Hash)?;
+                    self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryDeref, arg: n })
+                }
+                Token::AtSign => {
+                    self.chomp(Token::AtSign)?;
+                    self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryAddressOf, arg: n })
+                }
+                Token::As => {
+                    self.chomp(Token::As)?;
+                    let to_type = self.parse_typespecifier()?;
+                    self.new_node(t, AstNodeType::ExprCast { arg: n, to_type })
+                }
+                _ => return Ok(n)
+            };
+        }
     }
 
     fn parse_primary_expression(self: &mut Self) -> ParseOne<'ctx> {

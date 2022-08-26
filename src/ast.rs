@@ -74,6 +74,23 @@ impl<'ctx> AstNode<'ctx> {
                     expr.pretty_print(indent + 1);
                 }
             }
+            AstNodeType::ExprCall { callee, args } => {
+                println!("call function:");
+                callee.pretty_print(indent + 1);
+                indent!();
+                println!("arguments:");
+                for a in args {
+                    a.pretty_print(indent + 1);
+                }
+            }
+            AstNodeType::ExprMemberAccess { struct_expr, member } => {
+                println!("struct member '{}' on expr:", member);
+                struct_expr.pretty_print(indent + 1);
+            }
+            AstNodeType::ExprCast { arg, to_type } => {
+                println!("cast (to {:?}) expr:", to_type);
+                arg.pretty_print(indent + 1);
+            }
             AstNodeType::ExprVoidLiteral => println!("void literal"),
             AstNodeType::ExprBoolLiteral(v) => println!("bool ({})", v),
             AstNodeType::ExprIntLiteral(v, t) => println!("integer ({}, {:?})", v, t),
@@ -111,6 +128,10 @@ impl<'ctx> AstNode<'ctx> {
                 println!("op {:?}", op);
                 args[0].pretty_print(indent + 1);
                 args[1].pretty_print(indent + 1);
+            }
+            AstNodeType::ExprUnop { op, arg } => {
+                println!("op {:?}", op);
+                arg.pretty_print(indent + 1);
             }
             AstNodeType::ExprIfElse {
                 condition,
@@ -255,6 +276,19 @@ pub enum AstNodeType<'ctx> {
     },
     Asm(&'ctx str),
     ExprList(Vec<AstNodeRef<'ctx>>),
+    ExprCall {
+        callee: AstNodeRef<'ctx>,
+        args: Vec<AstNodeRef<'ctx>>,
+        // XXX bool is_indirect -- C impl type checker resolves this
+    },
+    ExprMemberAccess {
+        struct_expr: AstNodeRef<'ctx>,
+        member: &'ctx str
+    },
+    ExprCast {
+        arg: AstNodeRef<'ctx>,
+        to_type: TypeSpecifier<'ctx>
+    },
     ExprVoidLiteral,
     ExprBoolLiteral(bool),
     ExprIntLiteral(i32, LiteralIntExprType),
@@ -277,6 +311,10 @@ pub enum AstNodeType<'ctx> {
     ExprBinop {
         op: Op,
         args: [AstNodeRef<'ctx>; 2],
+    },
+    ExprUnop {
+        op: Op,
+        arg: AstNodeRef<'ctx>
     },
     ExprLoop {
         label: Option<&'ctx str>,
