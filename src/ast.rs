@@ -44,13 +44,18 @@ impl<'ctx> AstNode<'ctx> {
                 is_const,
                 name,
                 typespec,
+                value,
             } => {
                 println!(
-                    "{} {}: {:?}",
+                    "{} {}: {:?} {}",
                     if *is_const { "const" } else { "var" },
                     name,
-                    typespec
+                    typespec,
+                    if value.is_none() { "= None" } else { "=" }
                 );
+                if let Some(value) = value {
+                    value.pretty_print(indent + 1);
+                }
             }
             AstNodeType::Func {
                 name,
@@ -67,6 +72,7 @@ impl<'ctx> AstNode<'ctx> {
                     println!("<fwd def>");
                 }
             }
+            AstNodeType::Include(filename) => println!("include '{}'", filename),
             AstNodeType::Asm(asm_text) => println!("asm('{}')", asm_text),
             AstNodeType::ExprList(exprs) => {
                 println!("ExprList");
@@ -83,7 +89,10 @@ impl<'ctx> AstNode<'ctx> {
                     a.pretty_print(indent + 1);
                 }
             }
-            AstNodeType::ExprMemberAccess { struct_expr, member } => {
+            AstNodeType::ExprMemberAccess {
+                struct_expr,
+                member,
+            } => {
                 println!("struct member '{}' on expr:", member);
                 struct_expr.pretty_print(indent + 1);
             }
@@ -210,7 +219,7 @@ pub enum Op {
     Lt,
     Gt,
     Lte,
-    Gtr,
+    Gte,
     LShift,
     RShift,
     ArrayIndexing,
@@ -264,11 +273,12 @@ pub enum AstNodeType<'ctx> {
         ret: Option<TypeSpecifier<'ctx>>,
         body: Option<AstNodeRef<'ctx>>, // None for forward decls
     },
+    Include(&'ctx str),
     StaticVar {
         name: &'ctx str,
         is_const: bool,
         typespec: Option<TypeSpecifier<'ctx>>,
-        //value: AstNodeRef<'ctx>
+        value: Option<AstNodeRef<'ctx>>,
     },
     StructDecl {
         name: &'ctx str,
@@ -283,11 +293,11 @@ pub enum AstNodeType<'ctx> {
     },
     ExprMemberAccess {
         struct_expr: AstNodeRef<'ctx>,
-        member: &'ctx str
+        member: &'ctx str,
     },
     ExprCast {
         arg: AstNodeRef<'ctx>,
-        to_type: TypeSpecifier<'ctx>
+        to_type: TypeSpecifier<'ctx>,
     },
     ExprVoidLiteral,
     ExprBoolLiteral(bool),
@@ -314,7 +324,7 @@ pub enum AstNodeType<'ctx> {
     },
     ExprUnop {
         op: Op,
-        arg: AstNodeRef<'ctx>
+        arg: AstNodeRef<'ctx>,
     },
     ExprLoop {
         label: Option<&'ctx str>,

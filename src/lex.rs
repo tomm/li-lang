@@ -38,6 +38,8 @@ pub enum Token<'a> {
     Comma,
     Period,
     Assign,
+    LogicalAnd,
+    LogicalOr,
     PlusAssign,
     MinusAssign,
     MulAssign,
@@ -251,10 +253,12 @@ pub fn lex<'ctx>(
             '@' => token!(1, Token::AtSign),
             '&' => match peek!(1) {
                 '=' => token!(2, Token::BitAndAssign),
+                '&' => token!(2, Token::LogicalAnd),
                 _ => token!(1, Token::Ampersand),
             },
             '|' => match peek!(1) {
                 '=' => token!(2, Token::BitOrAssign),
+                '|' => token!(2, Token::LogicalOr),
                 _ => token!(1, Token::Pipe),
             },
             '^' => match peek!(1) {
@@ -474,7 +478,8 @@ mod tests {
                 &=|=^= > >= >> >>= `xor b\n\
                 and c` \"hello\n\
                 world\" true false 'my_label '_other 'x'\n\
-                12_3456 0xcAfe 0b101010 0xbabau16 54i8 0u8 0xffe_i16", filename),
+                12_3456 0xcAfe 0b101010 0xbabau16 54i8 0u8 0xffe_i16\n\
+                &&||", filename),
             Ok(vec![
                 TokenLoc { token: Token::LBrace, line: 1, col: 1, filename },
                 TokenLoc { token: Token::RBrace, line: 1, col: 2, filename },
@@ -549,7 +554,9 @@ mod tests {
                 TokenLoc { token: Token::LiteralInt(54, LiteralIntTokenType::I8), line: 7, col: 35, filename },
                 TokenLoc { token: Token::LiteralInt(0, LiteralIntTokenType::U8), line: 7, col: 40, filename },
                 TokenLoc { token: Token::LiteralInt(0xffe, LiteralIntTokenType::I16), line: 7, col: 44, filename },
-                TokenLoc { token: Token::EOF, line: 7, col: 53, filename },
+                TokenLoc { token: Token::LogicalAnd, line: 8, col: 1, filename },
+                TokenLoc { token: Token::LogicalOr, line: 8, col: 3, filename },
+                TokenLoc { token: Token::EOF, line: 8, col: 5, filename },
             ])
         );
     }

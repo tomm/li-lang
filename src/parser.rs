@@ -95,19 +95,23 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 Token::Var => top_level_nodes.extend(self.parse_static_var_def()?),
                 Token::Func => top_level_nodes.push(self.parse_function()?),
                 Token::Asm(..) => top_level_nodes.push(self.parse_asm_literal()?),
-                Token::Ident(..) => {
-                    match self.chomp_ident()? {
-                        "asm" => {
-                            self.chomp(Token::LParen)?;
-                            top_level_nodes.push(self.parse_asm_literal()?);
-                            self.chomp(Token::RParen)?;
-                        }
-                        _ => {
-                            // XXX TODO "include"
-                            error!(tok, "Unexpected identifier".to_string());
-                        }
+                Token::Ident(..) => match self.chomp_ident()? {
+                    "asm" => {
+                        self.chomp(Token::LParen)?;
+                        top_level_nodes.push(self.parse_asm_literal()?);
+                        self.chomp(Token::RParen)?;
                     }
-                }
+                    "include" => match self.peek().token {
+                        Token::LiteralStr(s) => {
+                            self.toks.next();
+                            top_level_nodes.push(self.new_node(tok, AstNodeType::Include(s)));
+                        }
+                        _ => error!(*self.peek(), "Expected string literal".to_string()),
+                    },
+                    _ => {
+                        error!(tok, "Unexpected identifier".to_string());
+                    }
+                },
                 Token::Struct => top_level_nodes.push(self.parse_struct_def()?),
                 Token::EOF => break,
                 _ => error!(tok, format!("Unexpected token {:?}", tok.token)),
@@ -192,12 +196,19 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                     _ => None,
                 };
 
+                let value = if self.maybe_chomp(Token::Assign) {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
+                };
+
                 defs.push(self.new_node(
                     *ident,
                     AstNodeType::StaticVar {
                         name,
                         is_const,
                         typespec,
+                        value,
                     },
                 ));
             } else {
@@ -414,13 +425,8 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
     }
 
     fn parse_conditional_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let start = *self.peek();
-
-        let label = match start {
-            TokenLoc {
-                token: Token::JumpLabel(target),
-                ..
-            } => {
+        let label = match self.peek().token {
+            Token::JumpLabel(target) => {
                 self.toks.next();
                 self.chomp(Token::Colon)?;
 
@@ -439,12 +445,12 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
             _ => None,
         };
 
-        match start.token {
+        match self.peek().token {
             Token::While => {
-                self.toks.next();
+                let start = self.chomp(Token::While)?;
                 let condition = self.parse_expression()?;
                 self.chomp(Token::LBrace)?;
-                let body = self.parse_expression()?;
+                let body = self.parse_list_expression(Token::RBrace)?;
                 self.chomp(Token::RBrace)?;
 
                 Ok(self.new_node(
@@ -458,9 +464,9 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 ))
             }
             Token::Loop => {
-                self.toks.next();
+                let start = self.chomp(Token::Loop)?;
                 self.chomp(Token::LBrace)?;
-                let body = self.parse_expression()?;
+                let body = self.parse_list_expression(Token::RBrace)?;
                 self.chomp(Token::RBrace)?;
 
                 Ok(self.new_node(
@@ -474,8 +480,7 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                 ))
             }
             Token::For => {
-                self.chomp(Token::For)?;
-
+                let start = self.chomp(Token::For)?;
                 let var_scopes = self.parse_var_scopes()?;
                 self.chomp(Token::Semicolon)?;
 
@@ -530,23 +535,128 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
     }
 
     fn parse_comparison_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_logical_expression()?;
-        Ok(n)
+        let mut n = self.parse_logical_expression()?;
+
+        loop {
+            match self.peek().token {
+                Token::CmpEq
+                | Token::CmpNeq
+                | Token::CmpGte
+                | Token::CmpLte
+                | Token::CmpGt
+                | Token::CmpLt => {
+                    let t = *self.toks.next().unwrap();
+                    let arg2 = self.parse_logical_expression()?;
+
+                    n = self.new_node(
+                        t,
+                        AstNodeType::ExprBinop {
+                            op: match t.token {
+                                Token::CmpEq => Op::Eq,
+                                Token::CmpNeq => Op::Neq,
+                                Token::CmpGte => Op::Gte,
+                                Token::CmpLte => Op::Lte,
+                                Token::CmpGt => Op::Gt,
+                                Token::CmpLt => Op::Lt,
+                                _ => panic!(),
+                            },
+                            args: [n, arg2],
+                        },
+                    );
+                }
+                _ => return Ok(n),
+            }
+        }
     }
 
     fn parse_logical_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_additive_expression()?;
-        Ok(n)
+        let mut n = self.parse_additive_expression()?;
+
+        loop {
+            match self.peek().token {
+                Token::LogicalOr | Token::LogicalAnd => {
+                    let t = *self.toks.next().unwrap();
+                    let arg2 = self.parse_additive_expression()?;
+
+                    n = self.new_node(
+                        t,
+                        AstNodeType::ExprBinop {
+                            op: match t.token {
+                                Token::LogicalAnd => Op::LogicalAnd,
+                                Token::LogicalOr => Op::LogicalOr,
+                                _ => panic!(),
+                            },
+                            args: [n, arg2],
+                        },
+                    );
+                }
+                _ => return Ok(n),
+            }
+        }
     }
 
     fn parse_additive_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_multiplicative_expression()?;
-        Ok(n)
+        let mut n = self.parse_multiplicative_expression()?;
+
+        loop {
+            match self.peek().token {
+                Token::Plus
+                | Token::Minus
+                | Token::LShift
+                | Token::RShift
+                | Token::Ampersand
+                | Token::Pipe
+                | Token::Acute => {
+                    let t = *self.toks.next().unwrap();
+                    let arg2 = self.parse_multiplicative_expression()?;
+
+                    n = self.new_node(
+                        t,
+                        AstNodeType::ExprBinop {
+                            op: match t.token {
+                                Token::Plus => Op::Add,
+                                Token::Minus => Op::Sub,
+                                Token::LShift => Op::LShift,
+                                Token::RShift => Op::RShift,
+                                Token::Ampersand => Op::BitAnd,
+                                Token::Pipe => Op::BitOr,
+                                Token::Acute => Op::BitXor,
+                                _ => panic!(),
+                            },
+                            args: [n, arg2],
+                        },
+                    );
+                }
+                _ => return Ok(n),
+            }
+        }
     }
 
     fn parse_multiplicative_expression(self: &mut Self) -> ParseOne<'ctx> {
-        let n = self.parse_unary_expression()?;
-        Ok(n)
+        let mut n = self.parse_unary_expression()?;
+
+        loop {
+            match self.peek().token {
+                Token::Asterisk | Token::Slash | Token::Percent => {
+                    let t = *self.toks.next().unwrap();
+                    let arg2 = self.parse_unary_expression()?;
+
+                    n = self.new_node(
+                        t,
+                        AstNodeType::ExprBinop {
+                            op: match t.token {
+                                Token::Asterisk => Op::Mul,
+                                Token::Slash => Op::Div,
+                                Token::Percent => Op::Modulo,
+                                _ => panic!(),
+                            },
+                            args: [n, arg2],
+                        },
+                    );
+                }
+                _ => return Ok(n),
+            }
+        }
     }
 
     fn parse_unary_expression(self: &mut Self) -> ParseOne<'ctx> {
@@ -555,19 +665,37 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
             Token::Minus => {
                 self.chomp(Token::Minus)?;
                 let arg = self.parse_unary_expression()?;
-                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryNeg, arg }))
+                Ok(self.new_node(
+                    t,
+                    AstNodeType::ExprUnop {
+                        op: Op::UnaryNeg,
+                        arg,
+                    },
+                ))
             }
             Token::Tilde => {
                 self.chomp(Token::Tilde)?;
                 let arg = self.parse_unary_expression()?;
-                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryBitNot, arg }))
+                Ok(self.new_node(
+                    t,
+                    AstNodeType::ExprUnop {
+                        op: Op::UnaryBitNot,
+                        arg,
+                    },
+                ))
             }
             Token::Exclamation => {
                 self.chomp(Token::Exclamation)?;
                 let arg = self.parse_unary_expression()?;
-                Ok(self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryLogicalNot, arg }))
+                Ok(self.new_node(
+                    t,
+                    AstNodeType::ExprUnop {
+                        op: Op::UnaryLogicalNot,
+                        arg,
+                    },
+                ))
             }
-            _ => Ok(self.parse_postfix_expression()?)
+            _ => Ok(self.parse_postfix_expression()?),
         }
     }
 
@@ -597,29 +725,53 @@ impl<'ctx, 'ts> Parser<'ctx, 'ts> {
                     let idx = self.parse_expression()?;
                     self.chomp(Token::RSqBracket)?;
 
-                    self.new_node(t, AstNodeType::ExprBinop { op: Op::ArrayIndexing, args: [arr, idx] })
+                    self.new_node(
+                        t,
+                        AstNodeType::ExprBinop {
+                            op: Op::ArrayIndexing,
+                            args: [arr, idx],
+                        },
+                    )
                 }
                 Token::Period => {
                     self.chomp(Token::Period)?;
                     let struct_expr = n;
                     let member = self.chomp_ident()?;
 
-                    self.new_node(t, AstNodeType::ExprMemberAccess { struct_expr, member })
+                    self.new_node(
+                        t,
+                        AstNodeType::ExprMemberAccess {
+                            struct_expr,
+                            member,
+                        },
+                    )
                 }
                 Token::Hash => {
                     self.chomp(Token::Hash)?;
-                    self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryDeref, arg: n })
+                    self.new_node(
+                        t,
+                        AstNodeType::ExprUnop {
+                            op: Op::UnaryDeref,
+                            arg: n,
+                        },
+                    )
                 }
                 Token::AtSign => {
                     self.chomp(Token::AtSign)?;
-                    self.new_node(t, AstNodeType::ExprUnop { op: Op::UnaryAddressOf, arg: n })
+                    self.new_node(
+                        t,
+                        AstNodeType::ExprUnop {
+                            op: Op::UnaryAddressOf,
+                            arg: n,
+                        },
+                    )
                 }
                 Token::As => {
                     self.chomp(Token::As)?;
                     let to_type = self.parse_typespecifier()?;
                     self.new_node(t, AstNodeType::ExprCast { arg: n, to_type })
                 }
-                _ => return Ok(n)
+                _ => return Ok(n),
             };
         }
     }
@@ -718,4 +870,13 @@ pub fn parse_file<'ctx>(context: Ctx<'ctx>, filename: &str) -> Result<(), Compil
     let module = Parser::new(context, &mut iter).parse_module()?;
     module.pretty_print(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_parse() {
+        // should really test the parser ;)
+    }
 }
